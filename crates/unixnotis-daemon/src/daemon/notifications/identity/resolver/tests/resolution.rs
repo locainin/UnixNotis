@@ -1,7 +1,8 @@
 //! Attribution construction and grouping tests
 
 use super::super::resolution::{
-    resolution_for_record, sender_claim_group_key, unknown_reply_denied,
+    owner_bound_default_interactions, recognized_resolution, resolution_for_record,
+    sender_claim_group_key, unknown_reply_denied,
 };
 use super::*;
 use crate::daemon::notifications::identity::sender::SenderMetadataStatus;
@@ -122,4 +123,81 @@ fn sender_credential_timeout_is_preserved_in_diagnostics() {
         .attribution
         .diagnostic_detail
         .contains("credential lookup timed out"));
+}
+
+#[test]
+fn stable_callback_owner_gets_only_default_activation_authority() {
+    let mut metadata = sender("/usr/bin/example", identity(106, 1_060, 0));
+    metadata.sender_pid = Some(42);
+    metadata.sender_start_time = Some(4_200);
+    metadata.sender_uid = Some(1_000);
+
+    assert_eq!(
+        owner_bound_default_interactions(&metadata),
+        InteractionPolicies::OWNER_BOUND_DEFAULT
+    );
+}
+
+#[test]
+fn incomplete_callback_owner_gets_no_interaction_authority() {
+    let metadata = sender("/usr/bin/example", identity(106, 1_060, 0));
+
+    assert_eq!(
+        owner_bound_default_interactions(&metadata),
+        InteractionPolicies::DENY
+    );
+}
+
+#[test]
+fn credential_timeout_never_gets_owner_bound_default_authority() {
+    let metadata = SenderMetadata {
+        sender_name: Some(":1.43".to_string()),
+        sender_pid: Some(43),
+        sender_start_time: Some(4_300),
+        sender_uid: Some(1_000),
+        status: SenderMetadataStatus::CredentialLookupTimedOut,
+        ..SenderMetadata::default()
+    };
+
+    assert_eq!(
+        owner_bound_default_interactions(&metadata),
+        InteractionPolicies::DENY
+    );
+}
+
+#[test]
+fn recognized_candidate_with_a_stable_owner_exposes_only_default_activation() {
+    let record = system_record(
+        "org.example.Application",
+        "Example Application",
+        "/usr/bin/example",
+        identity(107, 1_070, 0),
+    );
+    let index = DesktopIdentityIndex::from_records(vec![record], Vec::new());
+    let record = index
+        .records_for_id("org.example.Application")
+        .into_iter()
+        .next()
+        .expect("fixture record should be indexed");
+    let mut metadata = sender("/usr/bin/example", identity(107, 1_070, 0));
+    metadata.sender_pid = Some(43);
+    metadata.sender_start_time = Some(4_300);
+    metadata.sender_uid = Some(1_000);
+
+    let resolution = recognized_resolution(
+        AppClaim {
+            reported_name: "Example Application",
+            desktop_entry: None,
+        },
+        &metadata,
+        record,
+        &index,
+        LaunchFailure::ExecutableMismatch,
+        "generic stable-owner fixture",
+    );
+
+    assert_eq!(
+        resolution.attribution.interactions,
+        InteractionPolicies::OWNER_BOUND_DEFAULT
+    );
 }

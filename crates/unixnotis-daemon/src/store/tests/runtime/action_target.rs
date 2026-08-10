@@ -94,6 +94,40 @@ fn active_action_target_denies_every_unverified_sender_class() {
 }
 
 #[test]
+fn owner_bound_unresolved_sender_allows_only_the_advertised_default_action() {
+    let mut store = make_store_with_limits(12, 20);
+    let mut notification = make_notification("owner-bound default");
+    notification.attribution = NotificationAttribution::unresolved(
+        "Example Application",
+        AttributionReason::MissingSenderEvidence,
+        "application identity unavailable",
+        "unknown:example".to_string(),
+    );
+    notification.attribution.interactions = InteractionPolicies::OWNER_BOUND_DEFAULT;
+    notification.actions = vec![
+        Action {
+            key: "default".to_string(),
+            label: "Open".to_string(),
+        },
+        Action {
+            key: "delete".to_string(),
+            label: "Delete".to_string(),
+        },
+    ];
+    let key = store.insert(notification, 0).active_notification().key();
+
+    assert!(store
+        .active_action_target_generation(key, "default", false)
+        .is_some());
+    assert!(store
+        .active_action_target_generation(key, "made-up-action", false)
+        .is_none());
+    assert!(store
+        .active_action_target_generation(key, "delete", true)
+        .is_none());
+}
+
+#[test]
 fn native_association_allows_default_but_requires_confirmation_for_buttons() {
     let mut store = make_store_with_limits(12, 20);
     let mut notification = make_notification("native associated actions");

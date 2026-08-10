@@ -47,6 +47,14 @@ impl InteractionPolicies {
         inline_reply: InlineReplyPolicy::Deny,
     };
 
+    /// A strongly owner-bound sender may expose only the advertised default action
+    /// This does not authenticate application branding or grant richer controls
+    pub const OWNER_BOUND_DEFAULT: Self = Self {
+        default_activation: ApplicationActionPolicy::Allow,
+        action_buttons: ApplicationActionPolicy::Deny,
+        inline_reply: InlineReplyPolicy::Deny,
+    };
+
     /// Brokered and user-local associations require confirmation for every action
     pub const CONFIRM_ACTIONS: Self = Self {
         default_activation: ApplicationActionPolicy::Confirm,

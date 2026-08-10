@@ -44,6 +44,22 @@ fn native_compatibility_keeps_default_activation_without_richer_authority() {
 }
 
 #[test]
+fn owner_bound_default_grants_only_default_activation() {
+    assert_eq!(
+        InteractionPolicies::OWNER_BOUND_DEFAULT.default_activation,
+        ApplicationActionPolicy::Allow
+    );
+    assert_eq!(
+        InteractionPolicies::OWNER_BOUND_DEFAULT.action_buttons,
+        ApplicationActionPolicy::Deny
+    );
+    assert_eq!(
+        InteractionPolicies::OWNER_BOUND_DEFAULT.inline_reply,
+        InlineReplyPolicy::Deny
+    );
+}
+
+#[test]
 fn confirmation_and_denial_matrices_never_allow_inline_text() {
     for policies in [
         InteractionPolicies::CONFIRM_ACTIONS,

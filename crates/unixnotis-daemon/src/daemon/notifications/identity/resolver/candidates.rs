@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use unixnotis_core::{AttributionReason, AttributionStatus, NotificationAttribution};
+use unixnotis_core::{
+    AttributionReason, AttributionStatus, InteractionPolicies, NotificationAttribution,
+};
 
 use super::super::desktop_index::{
     normalize_desktop_id, normalize_name, DesktopIdentityIndex, DesktopRecord, LaunchFailure,
@@ -13,7 +15,8 @@ use super::diagnostics::{launch_failure_label, with_diagnostics};
 use super::evidence::{candidate_proves_conflict, lineage_association, sender_claim_relation};
 use super::model::{CandidateVerification, SenderClaimRelation, VerifiedDesktopRecord};
 use super::resolution::{
-    conflict_from_candidate, policy_resolution, recognized_resolution, sender_claim_group_key,
+    conflict_from_candidate, owner_bound_default_interactions, policy_resolution,
+    recognized_resolution, sender_claim_group_key,
 };
 use super::{AppClaim, AttributionResolution};
 
@@ -141,12 +144,14 @@ fn resolve_matching_candidate(
             sender,
             candidate,
             "Sender belongs to a separate installed package without a positive application association",
+            InteractionPolicies::DENY,
         ),
         SenderClaimRelation::UnknownExecutable => unresolved_claim_resolution(
             claim,
             sender,
             candidate,
             "No positive sender association with the claimed application was established",
+            owner_bound_default_interactions(sender),
         ),
         SenderClaimRelation::DifferentVerifiedApplication => {
             conflict_from_candidate(claim, sender, index, candidate.record, failure)
@@ -158,6 +163,7 @@ fn resolve_matching_candidate(
                     sender,
                     candidate,
                     "The relay executable could not be revalidated",
+                    InteractionPolicies::DENY,
                 )
             }),
     }
@@ -185,18 +191,23 @@ fn unresolved_claim_resolution(
     sender: &SenderMetadata,
     candidate: &CandidateVerification<'_>,
     detail: &str,
+    interactions: InteractionPolicies,
 ) -> AttributionResolution {
     let detail = sender.sender_executable.as_deref().map_or_else(
         || detail.to_string(),
         |path| format!("{detail}; source {path}"),
     );
     with_diagnostics(
-        policy_resolution(NotificationAttribution::unresolved(
-            claim.reported_name,
-            AttributionReason::NoDesktopCandidate,
-            &detail,
-            sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
-        )),
+        policy_resolution({
+            let mut attribution = NotificationAttribution::unresolved(
+                claim.reported_name,
+                AttributionReason::NoDesktopCandidate,
+                &detail,
+                sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
+            );
+            attribution.interactions = interactions;
+            attribution
+        }),
         claim,
         sender,
         Some(candidate.record),
@@ -250,13 +261,15 @@ fn unresolved_candidate_resolution(
         || "No reliable desktop application candidate was found".to_string(),
         |path| format!("No desktop application matched source {path}"),
     );
+    let mut attribution = NotificationAttribution::unresolved(
+        claim.reported_name,
+        reason,
+        &detail,
+        sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
+    );
+    attribution.interactions = owner_bound_default_interactions(sender);
     with_diagnostics(
-        policy_resolution(NotificationAttribution::unresolved(
-            claim.reported_name,
-            reason,
-            &detail,
-            sender_claim_group_key(AttributionStatus::Unresolved, claim.reported_name, sender),
-        )),
+        policy_resolution(attribution),
         claim,
         sender,
         None,

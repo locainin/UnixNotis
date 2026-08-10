@@ -42,6 +42,30 @@ fn mismatched_desktop_hint_does_not_become_claim_evidence() {
 }
 
 #[test]
+fn stable_unresolved_sender_keeps_only_the_protocol_default_action() {
+    let mut metadata = sender("/usr/bin/example", identity(100, 1_000, 0));
+    metadata.sender_pid = Some(42);
+    metadata.sender_start_time = Some(4_200);
+    metadata.sender_uid = Some(1_000);
+
+    let resolution = resolve_unverified_candidates(
+        AppClaim {
+            reported_name: "Example Application",
+            desktop_entry: None,
+        },
+        &metadata,
+        &DesktopIdentityIndex::default(),
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        resolution.attribution.interactions,
+        InteractionPolicies::OWNER_BOUND_DEFAULT
+    );
+}
+
+#[test]
 fn canonical_conflict_candidate_supplies_the_stable_failure_reason() {
     let executable = identity(102, 1_020, 0);
     let mut canonical = system_record(

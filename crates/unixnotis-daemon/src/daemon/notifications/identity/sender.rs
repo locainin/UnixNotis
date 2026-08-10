@@ -80,6 +80,23 @@ pub(in crate::daemon) struct SenderMetadata {
     pub(in crate::daemon::notifications) status: SenderMetadataStatus,
 }
 
+impl SenderMetadata {
+    /// A callback can be returned only to one concrete process lifetime
+    /// This is delivery evidence, not application identity evidence
+    pub(in crate::daemon::notifications) const fn has_stable_callback_owner(&self) -> bool {
+        self.sender_name.is_some()
+            && self.sender_pid.is_some()
+            && self.sender_start_time.is_some()
+            && self.sender_uid.is_some()
+            && !matches!(
+                self.status,
+                SenderMetadataStatus::MissingSenderName
+                    | SenderMetadataStatus::CredentialLookupFailed
+                    | SenderMetadataStatus::CredentialLookupTimedOut
+            )
+    }
+}
+
 fn metadata_with_status(
     sender_name: Option<String>,
     status: SenderMetadataStatus,

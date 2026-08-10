@@ -15,6 +15,16 @@ use super::diagnostics::{launch_failure_label, with_diagnostics};
 use super::model::VerifiedDesktopRecord;
 use super::{AppClaim, AttributionResolution};
 
+pub(super) const fn owner_bound_default_interactions(
+    sender: &SenderMetadata,
+) -> InteractionPolicies {
+    if sender.has_stable_callback_owner() {
+        InteractionPolicies::OWNER_BOUND_DEFAULT
+    } else {
+        InteractionPolicies::DENY
+    }
+}
+
 pub(in crate::daemon) fn unknown_reply_denied(
     claim: AppClaim<'_>,
     sender: &SenderMetadata,
@@ -185,7 +195,7 @@ pub(super) fn recognized_resolution(
         canonical_id,
         &canonical.badge_icon,
         assurance,
-        InteractionPolicies::DENY,
+        owner_bound_default_interactions(sender),
         attribution_reason_for_failure(failure),
         &source,
         group_key,

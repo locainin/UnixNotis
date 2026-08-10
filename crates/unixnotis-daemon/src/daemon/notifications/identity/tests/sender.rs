@@ -91,6 +91,27 @@ fn status_metadata_preserves_sender_name_and_failure_status() {
     assert!(metadata.sender_uid.is_none());
 }
 
+#[test]
+fn stable_callback_owner_requires_a_complete_process_lifetime_binding() {
+    let stable = SenderMetadata {
+        sender_name: Some(":1.42".to_string()),
+        sender_pid: Some(42),
+        sender_start_time: Some(420),
+        sender_uid: Some(1_000),
+        status: SenderMetadataStatus::ProcessEvidenceUnavailable,
+        ..SenderMetadata::default()
+    };
+    assert!(stable.has_stable_callback_owner());
+
+    let mut missing_process = stable.clone();
+    missing_process.sender_start_time = None;
+    assert!(!missing_process.has_stable_callback_owner());
+
+    let mut failed_lookup = stable;
+    failed_lookup.status = SenderMetadataStatus::CredentialLookupTimedOut;
+    assert!(!failed_lookup.has_stable_callback_owner());
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn parse_process_start_time_handles_spaces_in_comm() {
