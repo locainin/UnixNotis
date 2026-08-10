@@ -1,4 +1,4 @@
-use super::{icon_key_for_path, image_key_matches, set_image_key, IconKey};
+use super::{clear_image_key, icon_key_for_path, image_key_matches, set_image_key, IconKey};
 
 fn hash_image_data(data: &[u8]) -> [u8; 32] {
     *blake3::hash(data).as_bytes()
@@ -23,6 +23,19 @@ fn image_key_matches_only_the_stored_icon_request() {
 
     assert!(image_key_matches(&image, &stored));
     assert!(!image_key_matches(&image, &different));
+}
+
+#[gtk::test]
+fn cleared_image_key_cannot_accept_a_stale_decode_completion() {
+    let image = gtk::Image::new();
+    let key = key("org.example.Old");
+
+    set_image_key(&image, key.clone());
+    assert!(image_key_matches(&image, &key));
+
+    clear_image_key(&image);
+
+    assert!(!image_key_matches(&image, &key));
 }
 
 #[gtk::test]

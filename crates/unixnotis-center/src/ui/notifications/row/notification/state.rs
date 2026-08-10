@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use unixnotis_core::{NotificationKey, NotificationView};
 use unixnotis_ui::presentation::default_activation::DefaultActionBinding;
-use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation};
+use unixnotis_ui::presentation::{BadgePresentation, NotificationPresentation, TrustLevel};
 
 use super::reply::InlineReplyWidgets;
 
@@ -95,10 +95,13 @@ pub(super) struct OptionalLabelState<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::ui::notifications) struct IconSignature {
-    // Header badges depend only on daemon-associated attribution inputs
+    // Every field that can change the chosen header icon belongs in this key
     badge_icon: String,
     desktop_id: String,
+    claimed_theme_icon: String,
+    claimed_desktop_id: String,
     presentation: BadgePresentation,
+    trust: TrustLevel,
 }
 
 impl IconSignature {
@@ -111,7 +114,10 @@ impl IconSignature {
         Self {
             badge_icon: notification.attribution.badge_icon.clone(),
             desktop_id: notification.attribution.desktop_id.clone(),
+            claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+            claimed_desktop_id: notification.image.claimed_desktop_id.clone(),
             presentation: presentation.identity.badge,
+            trust: presentation.trust.level,
         }
     }
 }

@@ -30,6 +30,21 @@ fn contains_label_text(root: &gtk::Widget, text: &str) -> bool {
     false
 }
 
+fn find_image_with_class(root: &gtk::Widget, class_name: &str) -> Option<gtk::Image> {
+    if root.has_css_class(class_name) {
+        return root.clone().downcast::<gtk::Image>().ok();
+    }
+
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(image) = find_image_with_class(&widget, class_name) {
+            return Some(image);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 #[gtk::test]
 fn set_and_get_row_widgets_round_trips_cached_bundle() {
     support::init_gtk();
@@ -164,7 +179,7 @@ fn unbind_disconnects_row_item_update_handler() {
         "summary 1"
     ));
 
-    widgets.unbind();
+    widgets.unbind(&IconResolver::new());
     let changed = Rc::new(support::notification(2, "Terminal"));
     item.update(RowData::notification(
         Rc::from("terminal"),
@@ -184,4 +199,33 @@ fn unbind_disconnects_row_item_update_handler() {
         &widgets.root.clone().upcast::<gtk::Widget>(),
         "summary 2"
     ));
+}
+
+#[gtk::test]
+fn unbind_clears_group_identity_before_async_work_can_repaint_it() {
+    support::init_gtk();
+    let (command_tx, event_tx) = support::channels();
+    let widgets = Rc::new(RowWidgets::new(RowKind::GroupHeader, command_tx, event_tx));
+    let notification = Rc::new(support::notification(1, "Example Application"));
+    let item = RowItem::new(RowData::group_header(
+        Rc::from("example:application"),
+        2,
+        false,
+        notification,
+    ));
+    let resolver = Rc::new(IconResolver::new());
+
+    bind_row(widgets.clone(), &item, &item.data(), resolver.clone());
+
+    let icon = find_image_with_class(
+        &widgets.root.clone().upcast::<gtk::Widget>(),
+        unixnotis_core::hooks::group_row::ICON,
+    )
+    .expect("group identity icon should exist");
+    assert!(icon.get_visible());
+
+    widgets.unbind(&resolver);
+
+    assert!(!icon.get_visible());
+    assert!(icon.paintable().is_none());
 }

@@ -134,6 +134,9 @@ fn update_group_row_falls_back_to_group_key_without_sample() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
+    let resolver = IconResolver::new();
+    let sample = RowData::group_header(Rc::from("terminal"), 2, false, notification("Terminal"));
+    update_group_row(&widgets, &root, &sample, &resolver);
     let data = RowData {
         kind: RowKind::GroupHeader,
         group_key: Rc::from("terminal"),
@@ -142,11 +145,48 @@ fn update_group_row_falls_back_to_group_key_without_sample() {
         ..RowData::default()
     };
 
-    update_group_row(&widgets, &root, &data, &IconResolver::new());
+    update_group_row(&widgets, &root, &data, &resolver);
 
     assert_eq!(widgets.title.text().as_str(), "terminal");
+    assert!(widgets.icon.paintable().is_none());
     assert!(!widgets.icon.get_visible());
     assert!(root.has_css_class("unixnotis-group-row-no-icon"));
+}
+
+#[gtk::test]
+fn missing_group_sample_clears_recycled_conflict_presentation() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let resolver = IconResolver::new();
+    let mut conflicting = notification("Unknown application").as_ref().clone();
+    conflicting.attribution = unixnotis_core::NotificationAttribution::conflict(
+        "Example Claim",
+        "org.example.Application",
+        unixnotis_core::AttributionReason::ExecutableMismatch,
+        "conflicting process evidence",
+        "conflict:example".to_string(),
+    );
+    let conflict =
+        RowData::group_header(Rc::from("conflict:example"), 2, false, Rc::new(conflicting));
+    update_group_row(&widgets, &root, &conflict, &resolver);
+    assert!(root.has_css_class("unixnotis-attribution-warning"));
+    assert!(root.has_css_class("conflict"));
+    assert!(widgets.title.tooltip_text().is_some());
+
+    let empty = RowData {
+        kind: RowKind::GroupHeader,
+        group_key: Rc::from("empty:example"),
+        count: 1,
+        notification: None,
+        ..RowData::default()
+    };
+    update_group_row(&widgets, &root, &empty, &resolver);
+
+    assert!(!root.has_css_class("unixnotis-attribution-warning"));
+    assert!(!root.has_css_class("conflict"));
+    assert!(!root.has_css_class("relay"));
+    assert!(widgets.title.tooltip_text().is_none());
 }
 
 #[gtk::test]
@@ -221,7 +261,7 @@ fn recognized_group_keeps_application_icon_separate_from_trust_chip() {
 }
 
 #[gtk::test]
-fn unresolved_group_uses_neutral_icon_despite_claimed_application_branding() {
+fn unresolved_group_keeps_unverified_claimed_branding_separate_from_trust() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
@@ -232,7 +272,8 @@ fn unresolved_group_uses_neutral_icon_despite_claimed_application_branding() {
         "no sender evidence",
         "claim:example-chat".to_string(),
     );
-    unresolved.image.claimed_theme_icon = "example-chat".to_string();
+    // A claimed desktop id is presentation-only and does not authenticate the sender
+    unresolved.image.claimed_desktop_id = "folder".to_string();
     let data = RowData::group_header(
         Rc::from("claim:example-chat"),
         2,
@@ -242,10 +283,11 @@ fn unresolved_group_uses_neutral_icon_despite_claimed_application_branding() {
 
     update_group_row(&widgets, &root, &data, &IconResolver::new());
 
-    assert_eq!(
+    assert_ne!(
         widgets.icon.icon_name().as_deref(),
         Some("unixnotis-app-unknown-symbolic")
     );
+    assert!(widgets.icon.paintable().is_some());
     assert_eq!(widgets.trust_chip.text().as_str(), "Unverified");
     assert!(widgets.trust_chip.get_visible());
 }

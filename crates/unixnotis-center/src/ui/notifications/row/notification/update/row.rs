@@ -4,7 +4,7 @@ use gtk::prelude::*;
 use tokio::sync::mpsc;
 use unixnotis_core::hooks;
 use unixnotis_ui::presentation::{
-    apply_semantic_badge, default_activation::DefaultActionTarget, NotificationPresentation,
+    default_activation::DefaultActionTarget, NotificationPresentation,
 };
 
 use crate::control::UiCommand;
@@ -15,10 +15,13 @@ use super::super::state::{IconSignature, NotificationRowWidgets};
 use super::actions::{update_actions, visible_action_count_from};
 use super::labels::update_notification_text;
 use super::metadata::update_metadata_labels;
-use super::thumbnail::{panel_lead_visual, PanelLeadVisual};
+use super::thumbnail::{has_content_thumbnail, panel_lead_visual, PanelLeadVisual};
 use super::visual::{apply_visual_state, set_widget_visible_if_changed};
 
-pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRowWidgets) {
+pub(in crate::ui::notifications) fn clear_notification_row(
+    row: &NotificationRowWidgets,
+    icon_resolver: &IconResolver,
+) {
     // Clear every visible lane before a recycled row can be painted again
     row.default_activation.set_target(None);
     row.notify_key.set(unixnotis_core::NotificationKey {
@@ -56,7 +59,7 @@ pub(in crate::ui::notifications) fn clear_notification_row(row: &NotificationRow
     ] {
         widget.set_visible(false);
     }
-    row.icon.clear();
+    icon_resolver.clear_identity_badge(&row.icon);
     row.thumbnail.clear();
     for label in [
         &row.app_label,
@@ -95,7 +98,7 @@ pub(in crate::ui::notifications) fn update_notification_row(
         .set_reduced_motion(data.presentation.reduced_motion);
     // Model changes may briefly update a recycled row without notification data
     let Some(notification_snapshot) = data.notification.as_ref() else {
-        clear_notification_row(row);
+        clear_notification_row(row, icon_resolver);
         return;
     };
     let notification = notification_snapshot.as_ref();
@@ -124,16 +127,6 @@ pub(in crate::ui::notifications) fn update_notification_row(
         &presentation,
         data.presentation.show_avatar,
         data.presentation.show_thumbnail,
-    );
-    let has_thumbnail = lead_visual != PanelLeadVisual::None;
-
-    apply_visual_state(
-        row,
-        data,
-        notification,
-        &presentation,
-        has_actions,
-        has_thumbnail,
     );
     update_notification_text(
         row,
@@ -185,15 +178,19 @@ pub(in crate::ui::notifications) fn update_notification_row(
     let next_sig = IconSignature::from_presentation(notification, &presentation);
     let mut sig_guard = row.icon_sig.borrow_mut();
     if show_identity && sig_guard.as_ref() != Some(&next_sig) {
-        if apply_semantic_badge(&row.icon, presentation.identity.badge, 20) {
-            row.icon.set_visible(true);
-        } else {
-            let scale = row.card.scale_factor();
-            // Verified rows keep authenticated application art from the shared resolver
-            icon_resolver.apply_badge(&row.icon, notification, 20, scale);
-        }
+        let scale = row.card.scale_factor();
+        icon_resolver.apply_identity_badge(
+            &row.icon,
+            notification,
+            presentation.identity.badge,
+            presentation.trust.level,
+            20,
+            scale,
+        );
         *sig_guard = Some(next_sig);
     } else if !show_identity {
+        // Grouped rows do not own the application icon anymore
+        icon_resolver.clear_identity_badge(&row.icon);
         *sig_guard = None;
     }
     set_widget_visible_if_changed(&row.icon, show_identity);
@@ -207,7 +204,8 @@ pub(in crate::ui::notifications) fn update_notification_row(
         .remove_css_class(hooks::panel_card::CONTENT_IMAGE);
     row.thumbnail
         .remove_css_class(hooks::panel_card::SENDER_VISUAL);
-    match lead_visual {
+    let mut actual_visual = lead_visual;
+    match actual_visual {
         PanelLeadVisual::ConversationAvatar => {
             icon_resolver.apply_sender_visual(&row.thumbnail, notification);
         }
@@ -223,11 +221,42 @@ pub(in crate::ui::notifications) fn update_notification_row(
         }
         PanelLeadVisual::None => {}
     }
-    // A role alone cannot make an empty or malformed image paintable
-    set_widget_visible_if_changed(
-        &row.thumbnail,
-        has_thumbnail && row.thumbnail.paintable().is_some(),
+
+    // A malformed preferred avatar must not hide independently valid content media
+    if actual_visual == PanelLeadVisual::ConversationAvatar
+        && row.thumbnail.paintable().is_none()
+        && data.presentation.show_thumbnail
+        && has_content_thumbnail(&presentation)
+    {
+        row.thumbnail.clear();
+        row.thumbnail
+            .remove_css_class(hooks::panel_card::SENDER_VISUAL);
+        row.thumbnail
+            .add_css_class(hooks::panel_card::CONTENT_IMAGE);
+        icon_resolver.apply_content_visual(&row.thumbnail, notification);
+        if row.thumbnail.paintable().is_some() {
+            actual_visual = PanelLeadVisual::ContentImage;
+        } else {
+            // Invalid content stays out of the lane instead of reserving a blank slot
+            row.thumbnail
+                .remove_css_class(hooks::panel_card::CONTENT_IMAGE);
+            actual_visual = PanelLeadVisual::None;
+        }
+    }
+
+    // A semantic role is not enough to reserve a slot; the bounded texture must exist
+    let has_thumbnail =
+        actual_visual != PanelLeadVisual::None && row.thumbnail.paintable().is_some();
+    apply_visual_state(
+        row,
+        data,
+        notification,
+        &presentation,
+        has_actions,
+        has_thumbnail,
     );
+    // Keep malformed or empty rasters out of the visible lead lane
+    set_widget_visible_if_changed(&row.thumbnail, has_thumbnail);
     set_widget_visible_if_changed(&row.card_plate, true);
     set_widget_visible_if_changed(&row.card, true);
     // Recycled rows can change natural height when text, media, or stack depth changes

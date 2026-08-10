@@ -67,7 +67,7 @@ impl NotificationList {
 
         let command_tx_clone = command_tx;
         let event_tx_clone = event_tx;
-        let icon_resolver_clone = icon_resolver;
+        let icon_resolver_for_bind = icon_resolver.clone();
         factory.connect_bind(move |_, item| {
             let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
                 return;
@@ -83,15 +83,16 @@ impl NotificationList {
                 event_tx_clone.clone(),
             );
 
-            bind_row(widgets, &row_item, &data, icon_resolver_clone.clone());
+            bind_row(widgets, &row_item, &data, icon_resolver_for_bind.clone());
         });
 
+        let icon_resolver_for_unbind = icon_resolver;
         factory.connect_unbind(move |_, item| {
             let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
                 return;
             };
             if let Some(widgets) = get_row_widgets(gtk_item) {
-                widgets.unbind();
+                widgets.unbind(&icon_resolver_for_unbind);
             }
             // Keep RowWidgets attached so GTK can recycle rows without rebuilding
             // the widget tree on every scroll. Kind mismatches are handled in

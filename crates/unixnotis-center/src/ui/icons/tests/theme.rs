@@ -104,6 +104,97 @@ fn unresolved_notifications_keep_only_bounded_decorative_theme_hints() {
 }
 
 #[test]
+fn claimed_desktop_id_is_a_bounded_decorative_theme_hint() {
+    let notification = notification_view(
+        "Unknown",
+        unixnotis_core::NotificationAttribution::default(),
+        NotificationImage {
+            claimed_desktop_id: "example-chat.desktop".to_string(),
+            ..NotificationImage::default()
+        },
+    );
+
+    let candidates = collect_icon_candidates(&notification);
+
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "example-chat.desktop"));
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "example-chat"));
+    assert!(candidates.iter().all(|candidate| !candidate.contains('/')));
+}
+
+#[test]
+fn unresolved_claimed_branding_precedes_the_generic_daemon_badge() {
+    let notification = notification_view(
+        "Example Application",
+        unixnotis_core::NotificationAttribution::default(),
+        NotificationImage {
+            claimed_desktop_id: "org.example.App.desktop".to_string(),
+            ..NotificationImage::default()
+        },
+    );
+    let candidates = collect_icon_candidates(&notification);
+
+    assert_eq!(
+        candidates.first().map(String::as_str),
+        Some("org.example.App.desktop")
+    );
+}
+
+#[test]
+fn associated_branding_still_precedes_presentation_claims() {
+    let attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Application",
+        "Example Application",
+        "org.example.Associated",
+        "org.example.associated",
+        unixnotis_core::IdentityAssurance::SystemAssociated,
+        unixnotis_core::InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "associated fixture",
+        "associated:system-app:org.example.Associated".to_string(),
+    );
+    let notification = notification_view(
+        "Example Application",
+        attribution,
+        NotificationImage {
+            claimed_desktop_id: "org.example.Claimed.desktop".to_string(),
+            ..NotificationImage::default()
+        },
+    );
+    let candidates = collect_icon_candidates(&notification);
+
+    assert_eq!(
+        candidates.first().map(String::as_str),
+        Some("org.example.associated")
+    );
+}
+
+#[test]
+fn icon_candidates_remove_duplicate_presentation_hints() {
+    let notification = notification_view(
+        "Example",
+        unixnotis_core::NotificationAttribution {
+            badge_icon: "folder".to_string(),
+            desktop_id: "folder".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
+        NotificationImage {
+            claimed_theme_icon: "folder".to_string(),
+            claimed_desktop_id: "folder".to_string(),
+            ..NotificationImage::default()
+        },
+    );
+    let candidates = collect_icon_candidates(&notification);
+    let mut unique = candidates.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(candidates.len(), unique.len());
+}
+
+#[test]
 fn expand_rgb_to_rgba_appends_alpha() {
     let data = ImageData {
         width: 2,

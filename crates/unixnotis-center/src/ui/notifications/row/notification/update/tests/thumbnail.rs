@@ -276,6 +276,7 @@ fn historical_empty_avatar_role_does_not_create_a_blank_lead_slot() {
 
     assert!(!row.thumbnail.get_visible());
     assert!(row.thumbnail.paintable().is_none());
+    assert!(!row.card.has_css_class(hooks::panel_card::HAS_THUMBNAIL));
     assert!(row.card.has_css_class(hooks::panel_card::NO_THUMBNAIL));
 }
 

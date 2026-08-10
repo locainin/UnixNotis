@@ -14,7 +14,7 @@ use tracing::debug;
 use crate::control::{UiCommand, UiEvent};
 
 use super::item::{RowData, RowItem, RowKind};
-use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};
+use super::row::group::{build_group_row, clear_group_identity, update_group_row, GroupRowWidgets};
 use super::row::notification::{
     build_notification_row, clear_notification_row, update_notification_row, NotificationRowWidgets,
 };
@@ -92,10 +92,14 @@ impl RowWidgets {
         }
     }
 
-    pub(super) fn unbind(&self) {
+    pub(super) fn unbind(&self, icon_resolver: &IconResolver) {
         self.disconnect();
+        if let Some(group) = &self.group {
+            // Unbind is a real ownership boundary even when no empty model update arrives
+            clear_group_identity(group, icon_resolver);
+        }
         if let Some(notification) = &self.notification {
-            clear_notification_row(notification);
+            clear_notification_row(notification, icon_resolver);
         }
     }
 

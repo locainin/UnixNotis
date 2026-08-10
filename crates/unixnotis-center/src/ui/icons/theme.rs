@@ -9,7 +9,7 @@ use gio::prelude::FileExt;
 use gtk::gdk;
 use gtk::prelude::*;
 use gtk::{IconLookupFlags, IconPaintable, TextDirection};
-use unixnotis_core::{ImageData, NotificationImage, NotificationView};
+use unixnotis_core::{AttributionStatus, ImageData, NotificationImage, NotificationView};
 
 pub(super) enum IconSource {
     Paintable(IconPaintable),
@@ -78,24 +78,18 @@ fn resolve_icon_paintable(name: &str, size: i32, scale: i32) -> Option<IconPaint
 }
 
 pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if !notification.attribution.badge_icon.is_empty() {
-        candidates.push(notification.attribution.badge_icon.clone());
-        if let Some(stripped) = notification.attribution.badge_icon.strip_suffix(".desktop") {
-            candidates.push(stripped.to_string());
-        }
-        candidates.push(notification.attribution.badge_icon.to_lowercase());
+    let mut candidates = Vec::with_capacity(12);
+
+    // Presentation claims come first only when attribution is unresolved
+    // This keeps a generic daemon badge from hiding a useful bounded app hint
+    if notification.attribution.status == AttributionStatus::Unresolved {
+        push_claimed_icon_candidates(&mut candidates, notification);
+        push_attributed_icon_candidates(&mut candidates, notification);
+    } else {
+        push_attributed_icon_candidates(&mut candidates, notification);
+        push_claimed_icon_candidates(&mut candidates, notification);
     }
-    if !notification.attribution.desktop_id.is_empty() {
-        // Desktop ids are daemon-associated metadata and safe badge lookup candidates
-        candidates.push(notification.attribution.desktop_id.clone());
-        candidates.push(notification.attribution.desktop_id.to_lowercase());
-    }
-    if is_safe_theme_name(&notification.image.claimed_theme_icon) {
-        // The daemon has bounded this value and rejected path-like input
-        candidates.push(notification.image.claimed_theme_icon.clone());
-        candidates.push(notification.image.claimed_theme_icon.to_lowercase());
-    }
+
     let mut seen = HashSet::new();
     candidates
         .into_iter()
@@ -103,14 +97,48 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
         .collect()
 }
 
+fn push_attributed_icon_candidates(candidates: &mut Vec<String>, notification: &NotificationView) {
+    let badge_icon = notification.attribution.badge_icon.as_str();
+    if !badge_icon.is_empty() {
+        candidates.push(badge_icon.to_string());
+        if let Some(stripped) = badge_icon.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(badge_icon.to_lowercase());
+    }
+
+    let desktop_id = notification.attribution.desktop_id.as_str();
+    if !desktop_id.is_empty() {
+        candidates.push(desktop_id.to_string());
+        if let Some(stripped) = desktop_id.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(desktop_id.to_lowercase());
+    }
+}
+
+fn push_claimed_icon_candidates(candidates: &mut Vec<String>, notification: &NotificationView) {
+    // A desktop-entry hint stays decorative and never changes attribution
+    let claimed_desktop_id = notification.image.claimed_desktop_id.as_str();
+    if is_safe_theme_name(claimed_desktop_id) {
+        candidates.push(claimed_desktop_id.to_string());
+        if let Some(stripped) = claimed_desktop_id.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(claimed_desktop_id.to_lowercase());
+    }
+
+    let claimed_theme_icon = notification.image.claimed_theme_icon.as_str();
+    if is_safe_theme_name(claimed_theme_icon) {
+        candidates.push(claimed_theme_icon.to_string());
+        candidates.push(claimed_theme_icon.to_lowercase());
+    }
+}
+
 fn is_safe_theme_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
         && !value.starts_with('.')
-        && !value.contains('/')
-        && !value.contains('\\')
-        && !value.contains(':')
-        && !value.chars().any(char::is_whitespace)
         && value.chars().all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
         })

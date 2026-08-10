@@ -10,7 +10,7 @@ use gtk::pango;
 use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::{css::hooks, util};
-use unixnotis_ui::presentation::{apply_semantic_badge, NotificationPresentation, TrustLevel};
+use unixnotis_ui::presentation::{NotificationPresentation, TrustLevel};
 
 use crate::control::UiEvent;
 
@@ -251,23 +251,44 @@ pub(in crate::ui::notifications) fn update_group_row(
                     | TrustLevel::UserAssociated
             ),
         );
-        if apply_semantic_badge(&group.icon, presentation.identity.badge, GROUP_ICON_SIZE) {
-            group.icon.set_visible(true);
-        } else {
-            let scale = root.scale_factor();
-            // Verified groups keep authenticated application art from the shared resolver
-            icon_resolver.apply_badge(&group.icon, notification.as_ref(), GROUP_ICON_SIZE, scale);
-        }
+        let scale = root.scale_factor();
+        icon_resolver.apply_identity_badge(
+            &group.icon,
+            notification.as_ref(),
+            presentation.identity.badge,
+            presentation.trust.level,
+            GROUP_ICON_SIZE,
+            scale,
+        );
         set_class_state(root, hooks::group_row::HAS_ICON, true);
         set_class_state(root, hooks::group_row::NO_ICON, false);
     } else {
-        set_widget_visible_if_changed(&group.avatar, false);
-        set_widget_visible_if_changed(&group.icon, false);
+        clear_group_identity(group, icon_resolver);
+        clear_group_trust_state(group, root);
         set_class_state(root, hooks::group_row::NO_ICON, true);
         set_class_state(root, hooks::group_row::HAS_ICON, false);
     }
     // Group identity changes can alter the natural row height when rows are recycled
     root.queue_resize();
+}
+
+pub(in crate::ui::notifications) fn clear_group_identity(
+    group: &GroupRowWidgets,
+    icon_resolver: &IconResolver,
+) {
+    // Recycled group rows must revoke ownership of pending async icon work
+    // Hiding the widget alone is insufficient because a late decode shows it again
+    icon_resolver.clear_identity_badge(&group.icon);
+    set_widget_visible_if_changed(&group.avatar, false);
+}
+
+fn clear_group_trust_state(group: &GroupRowWidgets, root: &gtk::Box) {
+    // An empty model sample carries no trust evidence from the previous recycled row
+    group.title.set_tooltip_text(None);
+    set_class_state(root, "unixnotis-attribution-warning", false);
+    for class_name in ["verified", "recognized", "unresolved", "conflict", "relay"] {
+        set_class_state(root, class_name, false);
+    }
 }
 
 fn group_accessible_label(

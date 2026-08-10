@@ -5,6 +5,7 @@ mod labels;
 mod metadata;
 mod state;
 mod thumbnail;
+mod visual_matrix;
 
 pub(super) use super::actions::clamp_action_label_text;
 pub(super) use super::labels::optional_label_state;

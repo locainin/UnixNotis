@@ -5,10 +5,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::glib;
+use gtk::prelude::WidgetExt;
 use unixnotis_core::NotificationView;
 use unixnotis_ui::icons::DesktopIconIndex;
+use unixnotis_ui::presentation::{apply_semantic_badge, BadgePresentation, TrustLevel};
 
-use super::cache::{IconCache, IconKey};
+use super::cache::{clear_image_key, IconCache, IconKey};
 use super::decode::{IconUpdate, IconWorker};
 use super::missing::MissingIconCache;
 
@@ -56,6 +58,43 @@ impl IconResolver {
     ) {
         // Header badges deliberately exclude caller-controlled content image data and paths
         self.inner.apply_badge(image, notification, size, scale);
+    }
+
+    pub fn clear_identity_badge(&self, image: &gtk::Image) {
+        // Invalidate old async work before clearing the recycled GTK image
+        clear_image_key(image);
+        image.clear();
+        image.set_visible(false);
+    }
+
+    /// Applies application branding without letting contradictory trust evidence disappear
+    pub fn apply_identity_badge(
+        &self,
+        image: &gtk::Image,
+        notification: &NotificationView,
+        badge: BadgePresentation,
+        trust: TrustLevel,
+        size: i32,
+        scale: i32,
+    ) {
+        // Recycled rows may retain both a paintable and a hidden visibility state
+        self.clear_identity_badge(image);
+
+        if trust.semantic_badge_is_authoritative() {
+            // Conflict and relay states keep their semantic warning icon in front
+            if apply_semantic_badge(image, badge, size) {
+                // A semantic warning is visible even when this widget was recycled
+                image.set_visible(true);
+            }
+            return;
+        }
+
+        // Recognized and unresolved branding is presentation-only and may be resolved first
+        self.apply_badge(image, notification, size, scale);
+        if !image.get_visible() && apply_semantic_badge(image, badge, size) {
+            // Resolver misses and pending work leave the image hidden
+            image.set_visible(true);
+        }
     }
 
     pub fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {

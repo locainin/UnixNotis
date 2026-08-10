@@ -39,6 +39,60 @@ fn icon_signature_changes_when_trust_presentation_changes() {
     );
 }
 
+#[test]
+fn claimed_application_branding_changes_the_icon_signature() {
+    let mut first = sample_notification();
+    first.attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Application",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
+        "generic unresolved fixture",
+        "unknown:example".to_string(),
+    );
+    first.image.claimed_desktop_id = "org.example.First.desktop".to_string();
+
+    let mut second = first.clone();
+    second.image.claimed_desktop_id = "org.example.Second.desktop".to_string();
+
+    assert_ne!(icon_signature(&first), icon_signature(&second));
+}
+
+#[gtk::test]
+fn claimed_application_branding_refreshes_a_recycled_row_icon_signature() {
+    let (_root, row) = notification_row();
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(2);
+    let resolver = IconResolver::new();
+
+    let mut first = sample_notification();
+    first.attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Application",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
+        "generic unresolved fixture",
+        "unknown:example".to_string(),
+    );
+    first.image.claimed_desktop_id = "org.example.First.desktop".to_string();
+    let mut first_data = row_data(Rc::new(first), RowFlags::default());
+    first_data.app_header_present = false;
+
+    update_notification_row(&row, &first_data, &resolver, &command_tx);
+    let first_signature = row.icon_sig.borrow().clone();
+    assert!(first_signature.is_some());
+
+    let mut second = sample_notification();
+    second.attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Application",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
+        "generic unresolved fixture",
+        "unknown:example".to_string(),
+    );
+    second.image.claimed_desktop_id = "org.example.Second.desktop".to_string();
+    let mut second_data = row_data(Rc::new(second), RowFlags::default());
+    second_data.app_header_present = false;
+
+    update_notification_row(&row, &second_data, &resolver, &command_tx);
+
+    assert_ne!(*row.icon_sig.borrow(), first_signature);
+}
+
 #[gtk::test]
 fn close_control_ignores_unbound_rows_and_keeps_the_bound_generation() {
     let (_root, row, mut command_rx) = notification_row_with_receiver();
@@ -71,7 +125,7 @@ fn clearing_a_recycled_row_removes_old_content_and_controls() {
     assert_eq!(row.summary_label.text().as_str(), "summary");
     assert!(row.card.get_visible());
 
-    clear_notification_row(&row);
+    clear_notification_row(&row, &IconResolver::new());
 
     assert!(row.summary_label.text().is_empty());
     assert!(row.body_label.text().is_empty());
@@ -110,7 +164,7 @@ fn rebinding_after_clear_restores_wrapper_and_actions() {
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(4);
 
     update_notification_row(&row, &first, &IconResolver::new(), &command_tx);
-    clear_notification_row(&row);
+    clear_notification_row(&row, &IconResolver::new());
     update_notification_row(&row, &second, &IconResolver::new(), &command_tx);
 
     assert!(row.card_plate.get_visible());

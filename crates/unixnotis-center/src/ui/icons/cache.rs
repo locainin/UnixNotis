@@ -103,6 +103,18 @@ pub(super) fn image_key_matches(image: &gtk::Image, key: &IconKey) -> bool {
     })
 }
 
+pub(super) fn clear_image_key(image: &gtk::Image) {
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| {
+            let Some(current) = weak.upgrade() else {
+                return false;
+            };
+            current != *image
+        });
+    });
+}
+
 #[cfg(test)]
 #[path = "tests/cache.rs"]
 mod tests;
