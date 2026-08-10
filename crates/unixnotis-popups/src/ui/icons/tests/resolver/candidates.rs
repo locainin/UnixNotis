@@ -28,6 +28,7 @@ fn collect_icon_candidates_includes_a_distinct_desktop_id() {
         vec![
             "trusted-badge",
             "org.demo.App.desktop",
+            "org.demo.App",
             "org.demo.app.desktop",
         ]
     );
@@ -69,4 +70,57 @@ fn collect_icon_candidates_keeps_a_bounded_unresolved_theme_hint_decorative() {
         .any(|value| value == "dialog-warning-symbolic"));
     assert!(candidates.iter().any(|value| value == "trusted-brand"));
     assert!(candidates.iter().all(|value| !value.contains('/')));
+}
+
+#[test]
+fn claimed_desktop_id_is_a_presentation_only_icon_candidate() {
+    let mut notification = notification("Example Chat", "");
+    notification.image.claimed_desktop_id = "example-chat.desktop".to_string();
+
+    let candidates = collect_icon_candidates(&notification);
+
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "example-chat.desktop"));
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate == "example-chat"));
+    assert!(candidates.iter().all(|candidate| !candidate.contains('/')));
+}
+
+#[test]
+fn unresolved_claimed_branding_precedes_the_generic_daemon_badge() {
+    let mut input = notification("Example Application", "application-x-executable-symbolic");
+    input.image.claimed_desktop_id = "org.example.App.desktop".to_string();
+
+    let candidates = collect_icon_candidates(&input);
+
+    assert_eq!(
+        candidates.first().map(String::as_str),
+        Some("org.example.App.desktop")
+    );
+}
+
+#[test]
+fn associated_branding_still_precedes_presentation_claims() {
+    let mut input = notification("Example Application", "org.example.associated");
+    input.attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Application",
+        "Example Application",
+        "org.example.Associated",
+        "org.example.associated",
+        unixnotis_core::IdentityAssurance::SystemAssociated,
+        unixnotis_core::InteractionPolicies::NATIVE_COMPATIBILITY,
+        unixnotis_core::AttributionReason::ExactSystemExecutable,
+        "associated fixture",
+        "associated:system-app:org.example.Associated".to_string(),
+    );
+    input.image.claimed_desktop_id = "org.example.Claimed.desktop".to_string();
+
+    let candidates = collect_icon_candidates(&input);
+
+    assert_eq!(
+        candidates.first().map(String::as_str),
+        Some("org.example.associated")
+    );
 }

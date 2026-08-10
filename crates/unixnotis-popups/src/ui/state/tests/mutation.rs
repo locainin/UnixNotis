@@ -259,6 +259,9 @@ fn identical_update_rebuilds_a_row_after_icon_source_invalidation() {
         badge_icon: notification.attribution.badge_icon.clone(),
         desktop_id: notification.attribution.desktop_id.clone(),
         claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+        claimed_desktop_id: notification.image.claimed_desktop_id.clone(),
+        claimed_candidates_first: notification.attribution.status
+            == unixnotis_core::AttributionStatus::Unresolved,
     };
     assert!(state
         .icon_cache
@@ -326,9 +329,9 @@ fn popup_widget_tree_keeps_one_identity_grid_and_overlay_close_control() {
         gtk::AccessibleRole::Group
     );
     assert_eq!(
-        descendant_class_count(root.upcast_ref(), "unixnotis-identity-avatar"),
+        descendant_class_count(root.upcast_ref(), "unixnotis-popup-application-icon-slot",),
         1,
-        "one provenance-controlled avatar must own application identity"
+        "one compact icon must own application identity"
     );
     assert!(descendant_has_text(
         root.upcast_ref(),

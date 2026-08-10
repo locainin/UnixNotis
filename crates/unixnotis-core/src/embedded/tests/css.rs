@@ -193,7 +193,9 @@ fn popup_theme_keeps_kind_trust_and_compact_media_hooks() {
 
     // Default popups must not restore the old raw provenance body row
     assert!(!DEFAULT_POPUP_CSS.contains(".unixnotis-popup-source"));
-    assert!(DEFAULT_POPUP_CSS.contains(".unixnotis-identity-avatar"));
+    assert!(DEFAULT_POPUP_CSS.contains(".unixnotis-popup-application-icon-slot"));
+    assert!(DEFAULT_POPUP_CSS.contains(".unixnotis-popup-conversation-avatar-slot"));
+    assert!(!DEFAULT_POPUP_CSS.contains(".unixnotis-identity-avatar"));
     assert!(DEFAULT_POPUP_CSS.contains("min-width: 46px"));
     assert!(DEFAULT_POPUP_CSS.contains("min-width: 64px"));
     assert!(!DEFAULT_POPUP_CSS.contains("popup-warning-content"));

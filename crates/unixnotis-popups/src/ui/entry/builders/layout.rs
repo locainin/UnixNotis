@@ -4,14 +4,15 @@ use gtk::prelude::*;
 use unixnotis_core::NotificationView;
 
 use super::common::{
-    build_body_label, build_identity_avatar, build_identity_header, build_reply_note,
-    build_secondary_claim, build_title_label,
+    build_application_identity, build_body_label, build_conversation_avatar, build_identity_header,
+    build_reply_note, build_title_label,
 };
 use super::{append_thumbnail, RenderedPopup};
 use crate::ui::entry::presentation::PopupEntryViewModel;
 use crate::ui::UiState;
 
-const POPUP_IDENTITY_SIZE: i32 = 34;
+const POPUP_APPLICATION_ICON_SIZE: i32 = 24;
+const POPUP_CONVERSATION_AVATAR_SIZE: i32 = 46;
 
 pub(super) struct PopupLayout {
     pub(super) css_class: &'static str,
@@ -35,19 +36,22 @@ pub(super) fn build_popup_grid(
     let accessible_label = popup_accessible_label(view);
     grid.update_property(&[gtk::accessible::Property::Label(&accessible_label)]);
 
-    let avatar = build_identity_avatar(state, notification, view, POPUP_IDENTITY_SIZE);
-    grid.attach(&avatar.widget, 0, 0, 1, 2);
-
+    // The header row owns application identity and trust context independently
+    let header_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    header_row.add_css_class("unixnotis-popup-header-row");
+    header_row.set_hexpand(true);
+    let application_identity =
+        build_application_identity(state, notification, view, POPUP_APPLICATION_ICON_SIZE);
     let header = build_identity_header(view);
-    grid.attach(&header.identity, 1, 0, 1, 1);
-    grid.attach(&header.trailing, 2, 0, 1, 1);
+    header_row.append(&application_identity.widget);
+    header_row.append(&header.identity);
+    header_row.append(&header.trailing);
+    grid.attach(&header_row, 0, 0, 3, 1);
 
+    // Message content is a separate row so the avatar never sizes the app header
     let message = gtk::Box::new(gtk::Orientation::Vertical, 2);
     message.add_css_class("unixnotis-popup-message");
     message.set_hexpand(true);
-    if let Some(claim) = build_secondary_claim(view) {
-        message.append(&claim);
-    }
     if let Some(title) = build_title_label(view) {
         message.append(&title);
     }
@@ -60,7 +64,17 @@ pub(super) fn build_popup_grid(
             message.append(&note);
         }
     }
-    grid.attach(&message, 1, 1, 2, 1);
+    let message_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    message_row.add_css_class("unixnotis-popup-message-row");
+    message_row.set_hexpand(true);
+    // Conversation pixels belong beside the message, not below its body as a thumbnail
+    if let Some(conversation_avatar) =
+        build_conversation_avatar(notification, view, POPUP_CONVERSATION_AVATAR_SIZE)
+    {
+        message_row.append(&conversation_avatar.widget);
+    }
+    message_row.append(&message);
+    grid.attach(&message_row, 0, 1, 3, 1);
 
     RenderedPopup {
         widget: grid,

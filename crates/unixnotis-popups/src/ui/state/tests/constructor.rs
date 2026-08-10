@@ -254,7 +254,7 @@ fn unknown_attribution_uses_a_short_chip_without_showing_raw_provenance() {
     ));
     assert!(visible_descendant_has_text(
         root.upcast_ref(),
-        "Identity could not be verified"
+        "App identity could not be verified"
     ));
 }
 
@@ -374,7 +374,7 @@ fn notify_send_claim_uses_one_command_line_avatar_without_app_branding() {
         "App label: Example Chat"
     ));
     assert_eq!(
-        visible_descendant_class_count(root.upcast_ref(), "unixnotis-identity-avatar"),
+        visible_descendant_class_count(root.upcast_ref(), "unixnotis-popup-application-icon-slot",),
         1
     );
     assert!(!visible_descendant_has_class(

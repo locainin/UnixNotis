@@ -46,15 +46,14 @@ pub(super) fn append_thumbnail(
     if !should_append_thumbnail(view) {
         return false;
     }
-    let image = UiState::build_content_image_widget(notification);
-    let Some(image) = image else {
+    let Some(image) = UiState::build_content_image_widget(notification) else {
         return false;
     };
     if image.paintable().is_none() {
         return false;
     }
 
-    // Only genuine message media belongs below the body in the content lane
+    // Content pixels remain in the dedicated message-media lane
     image.set_halign(gtk::Align::Start);
     image.add_css_class("unixnotis-popup-content-image");
     content.append(&image);
@@ -62,7 +61,7 @@ pub(super) fn append_thumbnail(
 }
 
 const fn should_append_thumbnail(view: &PopupEntryViewModel) -> bool {
-    // Sender and application visuals are identity-lane data, never message attachments
+    // Only genuine message/media content belongs below the body
     matches!(view.thumbnail, super::presentation::ThumbnailKind::Content)
 }
 

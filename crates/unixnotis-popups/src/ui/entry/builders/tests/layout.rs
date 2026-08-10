@@ -43,7 +43,7 @@ fn conflict_accessible_name_includes_trust_claim_and_body() {
 }
 
 #[gtk::test]
-fn conversation_avatar_occupies_left_grid_column_across_message_rows() {
+fn popup_separates_application_identity_from_conversation_avatar() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupAvatarGrid")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -69,25 +69,41 @@ fn conversation_avatar_occupies_left_grid_column_across_message_rows() {
         },
     );
 
-    let avatar = rendered
+    let header_row = rendered
         .widget
         .child_at(0, 0)
         .and_downcast::<gtk::Box>()
-        .expect("left grid cell should contain the identity avatar");
-    let avatar_second_row = rendered
+        .expect("header row");
+    let application_identity = header_row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("header row should contain the application identity");
+    let message_row = rendered
         .widget
         .child_at(0, 1)
-        .expect("avatar should span the message row");
-    let icon = avatar
+        .and_downcast::<gtk::Box>()
+        .expect("message row");
+    let conversation_avatar = message_row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("message row should contain the conversation avatar");
+    let application_icon = application_identity
         .first_child()
         .and_downcast::<gtk::Image>()
-        .expect("avatar slot should contain one image");
+        .expect("application identity slot should contain one image");
+    let conversation_icon = conversation_avatar
+        .first_child()
+        .and_downcast::<gtk::Image>()
+        .expect("conversation slot should contain one image");
 
-    assert_eq!(avatar_second_row, avatar.upcast::<gtk::Widget>());
-    assert!(icon.has_css_class("unixnotis-popup-conversation-avatar"));
-    assert!(rendered.widget.child_at(1, 1).is_some());
+    assert!(!application_icon.has_css_class("unixnotis-popup-conversation-avatar"));
+    assert!(application_identity.has_css_class("unixnotis-popup-application-icon-slot"));
+    assert!(conversation_icon.has_css_class("unixnotis-popup-conversation-avatar"));
+    assert!(!conversation_avatar.has_css_class("unixnotis-identity-avatar"));
+    assert!(message_row.last_child().is_some());
+    assert!(header_row.has_css_class("unixnotis-popup-header-row"));
+    assert!(message_row.has_css_class("unixnotis-popup-message-row"));
 }
-
 fn view_model() -> PopupEntryViewModel {
     PopupEntryViewModel {
         kind: PopupKind::Communication,
@@ -120,11 +136,14 @@ fn conversation_notification() -> NotificationView {
         id: 7,
         generation: 1,
         app_name: "Example Chat".to_string(),
-        attribution: unixnotis_core::NotificationAttribution::unresolved(
+        attribution: unixnotis_core::NotificationAttribution::verified(
             "Example Chat",
-            unixnotis_core::AttributionReason::MissingSenderEvidence,
-            "no sender evidence",
-            "claim:example-chat".to_string(),
+            "Example Chat",
+            "org.example.Chat",
+            "example-chat",
+            unixnotis_core::AttributionReason::ExactSystemExecutable,
+            "verified test fixture",
+            "verified:example-chat".to_string(),
         ),
         summary: "PV2 Rivera in Tel Aviv 2026".to_string(),
         body: "10 eps I heard ts tuff asf".to_string(),
@@ -163,3 +182,6 @@ fn theme_paths(root: &std::path::Path) -> ThemePaths {
         media_css: root.join("media.css"),
     }
 }
+
+#[path = "visual_matrix.rs"]
+mod visual_matrix;

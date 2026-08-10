@@ -65,12 +65,15 @@ impl UiState {
         size: i32,
     ) -> Option<gtk::Image> {
         self.refresh_icon_sources_if_needed();
-        // Caller image hints are content, so the header resolves only authenticated badge inputs
+        // Authenticated inputs and bounded presentation hints share lookup, not trust authority
         let cache_key = IconResolutionKey {
             app_name: notification.app_name.clone(),
             badge_icon: notification.attribution.badge_icon.clone(),
             desktop_id: notification.attribution.desktop_id.clone(),
             claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+            claimed_desktop_id: notification.image.claimed_desktop_id.clone(),
+            claimed_candidates_first: notification.attribution.status
+                == unixnotis_core::AttributionStatus::Unresolved,
         };
         if let Some(cached) = self.icon_cache.get(&cache_key) {
             if let Some(icon_name) = cached.resolved.as_deref() {

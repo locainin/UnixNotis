@@ -24,45 +24,81 @@ const MIN_CONFIRM_INTERVAL_MS: u64 = 350;
 // Armed state expires after this long and the button goes back to normal
 const MAX_CONFIRM_TIMEOUT_MS: u64 = 5000;
 
-pub(super) struct IdentityAvatar {
+pub(super) struct VisualSlot {
     pub(super) widget: gtk::Box,
 }
 
-pub(super) fn build_identity_avatar(
+pub(super) fn build_application_identity(
     state: &mut UiState,
     notification: &NotificationView,
     view: &PopupEntryViewModel,
     size: i32,
-) -> IdentityAvatar {
-    let has_conversation_avatar =
-        view.visuals.sender == SenderVisualPresentation::ConversationAvatar;
-    let icon_size = if has_conversation_avatar {
-        size
+) -> VisualSlot {
+    // Application branding and trust are separate presentation decisions
+    let icon_size = size.clamp(18, 22);
+    let icon = if view.trust.level.semantic_badge_is_authoritative() {
+        // A warning state never falls back to caller-provided branding
+        build_semantic_badge(view.badge, icon_size)
     } else {
-        (size - 14).max(18)
-    };
-    let icon = UiState::build_conversation_avatar_widget(notification, icon_size)
-        .or_else(|| build_semantic_badge(view.badge, icon_size))
-        .or_else(|| state.build_app_icon_widget(notification, icon_size))
-        .unwrap_or_else(|| gtk::Image::from_icon_name("application-x-executable-symbolic"));
+        state
+            .build_app_icon_widget(notification, icon_size)
+            .or_else(|| build_semantic_badge(view.badge, icon_size))
+    }
+    .unwrap_or_else(|| gtk::Image::from_icon_name("application-x-executable-symbolic"));
+    build_identity_slot(icon, view, size, icon_size, true)
+}
+
+pub(super) fn build_conversation_avatar(
+    notification: &NotificationView,
+    view: &PopupEntryViewModel,
+    size: i32,
+) -> Option<VisualSlot> {
+    // Bounded in-memory pixels are a conversation visual, even when trust is unresolved
+    if view.visuals.sender != SenderVisualPresentation::ConversationAvatar {
+        return None;
+    }
+
+    let icon = UiState::build_conversation_avatar_widget(notification, size)?;
+    Some(build_identity_slot(icon, view, size, size, false))
+}
+
+fn build_identity_slot(
+    icon: gtk::Image,
+    view: &PopupEntryViewModel,
+    size: i32,
+    icon_size: i32,
+    is_application: bool,
+) -> VisualSlot {
     icon.set_pixel_size(icon_size);
     icon.set_size_request(icon_size, icon_size);
     icon.set_valign(Align::Center);
     icon.set_halign(Align::Center);
-    // Expansion centers the glyph optically inside the fixed avatar allocation
+
+    // The child can expand inside its fixed visual allocation for centering
     icon.set_hexpand(true);
     icon.set_vexpand(true);
     icon.set_accessible_role(gtk::AccessibleRole::Presentation);
-    icon.add_css_class("unixnotis-popup-icon");
+    if is_application {
+        icon.add_css_class("unixnotis-popup-icon");
+    }
+    let slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    slot.set_size_request(size, size);
+    slot.set_halign(Align::Start);
+    slot.set_valign(Align::Start);
 
-    let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    avatar.set_size_request(size, size);
-    avatar.set_halign(Align::Start);
-    avatar.set_valign(Align::Start);
-    avatar.add_css_class("unixnotis-identity-avatar");
-    avatar.add_css_class(view.trust.level.css_class());
-    avatar.append(&icon);
-    IdentityAvatar { widget: avatar }
+    // Stop child expansion from making the adjacent message column drift
+    slot.set_hexpand(false);
+    slot.set_vexpand(false);
+
+    if is_application {
+        // A compact header icon must not become a second message card
+        slot.add_css_class("unixnotis-popup-application-icon-slot");
+        slot.add_css_class(view.trust.level.css_class());
+    } else {
+        slot.add_css_class("unixnotis-popup-conversation-avatar-slot");
+    }
+    slot.append(&icon);
+    VisualSlot { widget: slot }
 }
 
 pub(super) struct IdentityHeader {
@@ -71,10 +107,14 @@ pub(super) struct IdentityHeader {
 }
 
 pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> IdentityHeader {
-    let identity = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let identity = gtk::Box::new(gtk::Orientation::Vertical, 1);
     identity.add_css_class("unixnotis-popup-identity-row");
     identity.set_hexpand(true);
     identity.set_halign(Align::Fill);
+
+    // The application name and trust chip share one compact header line
+    let identity_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    identity_top.set_hexpand(true);
 
     let app = gtk::Label::new(Some(&view.app_label));
     app.set_xalign(0.0);
@@ -87,10 +127,16 @@ pub(super) fn build_identity_header(view: &PopupEntryViewModel) -> IdentityHeade
         // Raw paths remain available on demand without entering normal card content
         app.set_tooltip_text(Some(details));
     }
-    identity.append(&app);
+    identity_top.append(&app);
 
     if let Some(chip) = build_trust_chip(&view.trust) {
-        identity.append(&chip);
+        identity_top.append(&chip);
+    }
+    identity.append(&identity_top);
+
+    // Attribution context belongs under the application header, not the message body
+    if let Some(claim) = build_secondary_claim(view) {
+        identity.append(&claim);
     }
 
     let trailing = gtk::Box::new(gtk::Orientation::Vertical, 2);

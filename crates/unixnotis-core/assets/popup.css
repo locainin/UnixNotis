@@ -105,7 +105,9 @@
 }
 
 .unixnotis-popup-identity-row,
-.unixnotis-popup-message {
+.unixnotis-popup-message,
+.unixnotis-popup-header-row,
+.unixnotis-popup-message-row {
   min-width: 0;
 }
 
@@ -160,38 +162,25 @@
   color: inherit;
 }
 
-/* Avatar: neutral rounded tile that quietly holds the app icon */
-.unixnotis-identity-avatar {
-  min-width: 46px;
-  min-height: 46px;
-  border-radius: 13px;
-  background: alpha(#ffffff, 0.09);
-  border: 1px solid alpha(#ffffff, 0.13);
+/* Application branding stays compact so the message remains the visual focus */
+.unixnotis-popup-application-icon-slot {
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
   color: alpha(#ffffff, 0.95);
-  box-shadow:
-    inset 0 1px 0 alpha(#ffffff, 0.10),
-    0 2px 6px -3px alpha(#000000, 0.50);
 }
 
-.unixnotis-identity-avatar.recognized {
-  border: 1px solid alpha(#ffffff, 0.12);
-}
-
-.unixnotis-identity-avatar.relay {
-  background: alpha(#fbbf24, 0.09);
-  border: 1px solid alpha(#fbbf24, 0.24);
+.unixnotis-popup-application-icon-slot.relay {
   color: alpha(#fde68a, 0.90);
 }
 
-.unixnotis-identity-avatar.unresolved {
-  background: alpha(#ffffff, 0.06);
-  border: 1px solid alpha(#ffffff, 0.08);
+.unixnotis-popup-application-icon-slot.unresolved {
   color: alpha(#ffffff, 0.84);
 }
 
-.unixnotis-identity-avatar.conflict {
-  background: alpha(#fb7185, 0.12);
-  border: 1px solid alpha(#fb7185, 0.32);
+.unixnotis-popup-application-icon-slot.conflict {
   color: #fecdd3;
 }
 
@@ -224,6 +213,25 @@
   border-radius: 10px;
   border: 1px solid alpha(#ffffff, 0.10);
   box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04);
+}
+
+/* Conversation avatars share the message lane and carry no app-identity chrome */
+.unixnotis-popup-conversation-avatar-slot {
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.unixnotis-popup-conversation-avatar-slot .unixnotis-popup-conversation-avatar {
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .unixnotis-popup-card.recognized,
@@ -350,7 +358,7 @@
   color: @unixnotis-critical-text;
 }
 
-.unixnotis-popup-card.critical .unixnotis-identity-avatar,
+.unixnotis-popup-card.critical .unixnotis-popup-application-icon-slot,
 .unixnotis-popup-card.critical .unixnotis-popup-icon {
   color: @unixnotis-critical-icon;
 }

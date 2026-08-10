@@ -105,8 +105,14 @@ fn icon_resolution_key_includes_all_candidate_inputs() {
     let mut second = first.clone();
     second.attribution.desktop_id = "org.example.Second.desktop".to_string();
     second.image.claimed_theme_icon = "second-theme".to_string();
+    let mut third = first.clone();
+    third.image.claimed_desktop_id = "org.example.Third.desktop".to_string();
+    let mut fourth = first.clone();
+    fourth.attribution.status = unixnotis_core::AttributionStatus::Recognized;
 
     assert_ne!(icon_cache_key(&first), icon_cache_key(&second));
+    assert_ne!(icon_cache_key(&first), icon_cache_key(&third));
+    assert_ne!(icon_cache_key(&first), icon_cache_key(&fourth));
 }
 
 #[gtk::test]
@@ -195,6 +201,9 @@ fn icon_cache_key(notification: &unixnotis_core::NotificationView) -> IconResolu
         badge_icon: notification.attribution.badge_icon.clone(),
         desktop_id: notification.attribution.desktop_id.clone(),
         claimed_theme_icon: notification.image.claimed_theme_icon.clone(),
+        claimed_desktop_id: notification.image.claimed_desktop_id.clone(),
+        claimed_candidates_first: notification.attribution.status
+            == unixnotis_core::AttributionStatus::Unresolved,
     }
 }
 
@@ -204,6 +213,8 @@ fn test_cache_key(name: &str) -> IconResolutionKey {
         badge_icon: String::new(),
         desktop_id: String::new(),
         claimed_theme_icon: String::new(),
+        claimed_desktop_id: String::new(),
+        claimed_candidates_first: true,
     }
 }
 

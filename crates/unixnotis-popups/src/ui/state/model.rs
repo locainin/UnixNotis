@@ -61,6 +61,10 @@ pub(in crate::ui) struct IconResolutionKey {
     pub(in crate::ui) badge_icon: String,
     pub(in crate::ui) desktop_id: String,
     pub(in crate::ui) claimed_theme_icon: String,
+    pub(in crate::ui) claimed_desktop_id: String,
+    // Unresolved identities search claimed presentation before daemon branding
+    // A trust transition must not reuse a result chosen under the opposite order
+    pub(in crate::ui) claimed_candidates_first: bool,
 }
 
 pub(in crate::ui) struct IconCacheEntry {

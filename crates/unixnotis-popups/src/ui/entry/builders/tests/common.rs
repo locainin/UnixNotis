@@ -1,11 +1,11 @@
 use super::{
-    build_action_row, build_body_label, build_close_button, build_identity_avatar,
-    build_identity_header, build_reply_note, build_secondary_claim, build_title_label,
-    build_urgency_badge,
+    build_action_row, build_application_identity, build_body_label, build_close_button,
+    build_conversation_avatar, build_identity_header, build_reply_note, build_secondary_claim,
+    build_title_label, build_urgency_badge,
 };
 use gtk::prelude::*;
 use unixnotis_core::{
-    Action, AttributionReason, InlineReply, InlineReplyPolicy, NotificationAttribution,
+    Action, AttributionReason, ImageData, InlineReply, InlineReplyPolicy, NotificationAttribution,
     NotificationImage, NotificationView,
 };
 
@@ -78,7 +78,9 @@ fn reply_note_exists_only_when_the_policy_explanation_is_needed() {
 #[gtk::test]
 fn close_button_and_identity_header_keep_their_interaction_contracts() {
     let close = build_close_button();
-    let header = build_identity_header(&view_model());
+    let mut view = view_model();
+    view.secondary_claim = Some("App identity could not be verified".to_string());
+    let header = build_identity_header(&view);
 
     assert!(close.has_css_class("unixnotis-popup-close"));
     assert_eq!(
@@ -86,6 +88,8 @@ fn close_button_and_identity_header_keep_their_interaction_contracts() {
         Some("Dismiss notification")
     );
     assert!(header.identity.hexpands());
+    assert_eq!(header.trailing.width_request(), 42);
+    assert_eq!(header.trailing.height_request(), -1);
     assert_eq!(header.trailing.margin_end(), 30);
     assert_eq!(header.trailing.orientation(), gtk::Orientation::Vertical);
     assert!(header
@@ -96,6 +100,10 @@ fn close_button_and_identity_header_keep_their_interaction_contracts() {
         .trailing
         .last_child()
         .is_some_and(|child| { child.has_css_class(unixnotis_core::hooks::urgency::BADGE) }));
+    assert!(header
+        .identity
+        .last_child()
+        .is_some_and(|child| child.has_css_class("unixnotis-popup-secondary-claim")));
 }
 
 #[gtk::test]
@@ -299,7 +307,7 @@ fn empty_action_model_does_not_build_an_action_row() {
 }
 
 #[gtk::test]
-fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
+fn application_identity_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupAvatarSizing")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -319,7 +327,7 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
     );
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
 
-    let avatar = build_identity_avatar(&mut state, &notification, &view, 36);
+    let avatar = build_application_identity(&mut state, &notification, &view, 36);
     let icon = avatar
         .widget
         .first_child()
@@ -334,7 +342,7 @@ fn identity_avatar_scales_the_symbolic_glyph_inside_its_fixed_slot() {
 }
 
 #[gtk::test]
-fn communication_identity_avatar_prefers_materialized_conversation_image() {
+fn conversation_avatar_renders_from_bounded_message_pixels() {
     let app = gtk::Application::builder()
         .application_id("org.unixnotis.PopupConversationAvatar")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -345,7 +353,7 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
     let root = std::env::temp_dir().join("unixnotis-popup-conversation-avatar");
     let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
     let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
-    let mut state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
+    let _state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
     let mut notification = notification();
     notification.inline_reply.available = true;
     notification.image.sender_visual_role =
@@ -361,7 +369,8 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
     };
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
 
-    let avatar = build_identity_avatar(&mut state, &notification, &view, 36);
+    let avatar = build_conversation_avatar(&notification, &view, 36)
+        .expect("conversation avatar should be available");
     let icon = avatar
         .widget
         .first_child()
@@ -370,6 +379,52 @@ fn communication_identity_avatar_prefers_materialized_conversation_image() {
 
     assert_eq!(icon.pixel_size(), 36);
     assert!(icon.has_css_class("unixnotis-popup-conversation-avatar"));
+}
+
+#[gtk::test]
+fn conversation_avatar_aspect_ratios_keep_the_fixed_lead_slot() {
+    let app = gtk::Application::builder()
+        .application_id("org.unixnotis.PopupConversationAspectRatios")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    app.register(None::<&gtk::gio::Cancellable>)
+        .expect("register aspect-ratio application");
+    let config = Config::default();
+    let root = std::env::temp_dir().join("unixnotis-popup-conversation-aspect-ratios");
+    let (command_tx, _command_rx) = tokio::sync::mpsc::channel(1);
+    let css = CssManager::new_popup(theme_paths(&root), config.theme.clone());
+    let _state = UiState::new(&app, config, root.join("config.toml"), command_tx, css);
+
+    for (width, height, rowstride, data) in [
+        (1, 1, 4, vec![1, 2, 3, 255]),
+        (1, 3, 4, [1, 2, 3, 255].repeat(3)),
+        (3, 1, 12, [1, 2, 3, 255].repeat(3)),
+    ] {
+        let mut notification = notification();
+        notification.image.sender_visual_role =
+            unixnotis_core::NotificationVisualRole::ConversationAvatar;
+        notification.image.sender_visual = ImageData {
+            width,
+            height,
+            rowstride,
+            has_alpha: true,
+            bits_per_sample: 8,
+            channels: 4,
+            data,
+        };
+        let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
+        let avatar = build_conversation_avatar(&notification, &view, 36)
+            .expect("valid bounded avatar should build");
+        let icon = avatar
+            .widget
+            .first_child()
+            .and_downcast::<gtk::Image>()
+            .expect("avatar slot should contain the image");
+
+        assert_eq!(avatar.widget.width_request(), 36);
+        assert_eq!(avatar.widget.height_request(), 36);
+        assert_eq!(icon.pixel_size(), 36);
+    }
 }
 
 #[gtk::test]
@@ -399,7 +454,7 @@ fn decorative_application_visual_does_not_replace_the_identity_badge() {
     };
     let view = PopupEntryViewModel::for_notification_at(&notification, 1_000);
 
-    let avatar = build_identity_avatar(&mut state, &notification, &view, 36);
+    let avatar = build_application_identity(&mut state, &notification, &view, 36);
     let icon = avatar
         .widget
         .first_child()

@@ -55,6 +55,17 @@ fn append_thumbnail_adds_only_genuine_content_image() {
     assert!(image.has_css_class("unixnotis-popup-content-image"));
 }
 
+#[gtk::test]
+fn append_thumbnail_rejects_conversation_avatar_without_content_image() {
+    let notification = notification_with_conversation_pixels();
+    let mut view = view_model();
+    view.visuals.sender = SenderVisualPresentation::ConversationAvatar;
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+
+    assert!(!append_thumbnail(&notification, &view, &content));
+    assert!(content.first_child().is_none());
+}
+
 fn view_model() -> PopupEntryViewModel {
     PopupEntryViewModel {
         kind: PopupKind::Communication,
@@ -106,6 +117,14 @@ fn notification() -> NotificationView {
         popup_decision: unixnotis_core::PopupDecisionRecord::default(),
         popup_hide_after_ms: 0,
     }
+}
+
+fn notification_with_conversation_pixels() -> NotificationView {
+    let mut notification = notification();
+    notification.image.sender_visual_role =
+        unixnotis_core::NotificationVisualRole::ConversationAvatar;
+    notification.image.sender_visual = pixel();
+    notification
 }
 
 fn pixel() -> unixnotis_core::ImageData {
