@@ -1,9 +1,40 @@
 use std::fs;
 
 use super::shim::{
-    remove_trial_control_shim, select_trial_shim_dir, trial_control_command_is_compatible,
+    ensure_trial_control_access, remove_trial_control_shim, select_trial_shim_dir,
+    trial_control_command_is_compatible,
 };
 use super::test_support::temp_dir;
+
+#[test]
+#[cfg(unix)]
+fn ensure_trial_control_access_creates_and_owns_a_private_shim() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let root = temp_dir("ensure-control-access");
+    let home = root.join("home");
+    let local_bin = home.join(".local").join("bin");
+    let target = root.join("target").join("debug").join("noticenterctl");
+    fs::create_dir_all(target.parent().expect("target parent")).expect("target parent");
+    fs::write(&target, "#!/bin/sh\n").expect("trial control target");
+
+    let _home = crate::test_support::env::EnvGuard::set("HOME", &home);
+    let _path = crate::test_support::env::EnvGuard::set("PATH", &local_bin);
+
+    let shim = ensure_trial_control_access(&target)
+        .expect("trial control access should be checked")
+        .expect("a visible local-bin path should receive a shim");
+
+    assert_eq!(shim.path, local_bin.join("noticenterctl"));
+    assert!(super::paths::path_exists_no_follow(&shim.path));
+
+    // Drop owns cleanup, so a later trial cannot inherit this run's shim
+    drop(shim);
+    assert!(!super::paths::path_exists_no_follow(
+        &local_bin.join("noticenterctl")
+    ));
+
+    let _ = fs::remove_dir_all(root);
+}
 
 #[test]
 fn trial_shim_dir_uses_local_bin_when_it_wins_path_resolution() {
@@ -117,6 +148,63 @@ fn trial_control_command_rejects_unrelated_path() {
 
     // Random commands should not be treated as trial-compatible control binaries
     assert!(!trial_control_command_is_compatible(&unrelated, &debug));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trial_control_command_rejects_arbitrary_local_bin_binary() {
+    // A writable PATH directory cannot become a trial trust root by pathname
+    let root = temp_dir("reject-local-bin-forgery");
+    let debug = root.join("target").join("debug").join("noticenterctl");
+    let forged = root.join(".local").join("bin").join("noticenterctl");
+    fs::create_dir_all(debug.parent().expect("debug parent")).expect("debug parent");
+    fs::create_dir_all(forged.parent().expect("local-bin parent")).expect("local-bin parent");
+    fs::write(&debug, "#!/bin/sh\n").expect("debug ctl");
+    fs::write(&forged, "#!/bin/sh\n").expect("forged ctl");
+
+    assert!(!trial_control_command_is_compatible(&forged, &debug));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[cfg(unix)]
+fn trial_control_command_accepts_local_bin_symlink_to_trial_binary() {
+    // PATH convenience remains compatible only when it resolves to the trial binary
+    let root = temp_dir("accept-trial-local-bin-link");
+    let debug = root.join("target").join("debug").join("noticenterctl");
+    let shim = root.join(".local").join("bin").join("noticenterctl");
+    fs::create_dir_all(debug.parent().expect("debug parent")).expect("debug parent");
+    fs::create_dir_all(shim.parent().expect("local-bin parent")).expect("local-bin parent");
+    fs::write(&debug, "#!/bin/sh\n").expect("debug ctl");
+    std::os::unix::fs::symlink(&debug, &shim).expect("trial shim");
+
+    assert!(trial_control_command_is_compatible(&shim, &debug));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn trial_control_command_rejects_renamed_component_binaries() {
+    // Renderer and daemon names must not make unrelated local-bin files trusted
+    let root = temp_dir("reject-renamed-components");
+    let debug = root.join("target").join("debug").join("noticenterctl");
+    fs::create_dir_all(debug.parent().expect("debug parent")).expect("debug parent");
+    fs::write(&debug, "#!/bin/sh\n").expect("debug ctl");
+
+    for executable in [
+        "noticenterctl",
+        "unixnotis-center",
+        "unixnotis-popups",
+        "unixnotis-daemon",
+    ] {
+        let forged = root.join(".local").join("bin").join(executable);
+        fs::create_dir_all(forged.parent().expect("local-bin parent")).expect("local-bin parent");
+        fs::write(&forged, "#!/bin/sh\n").expect("forged component");
+
+        assert!(!trial_control_command_is_compatible(&forged, &debug));
+    }
 
     let _ = fs::remove_dir_all(root);
 }

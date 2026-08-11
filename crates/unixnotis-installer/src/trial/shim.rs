@@ -42,7 +42,8 @@ pub(super) fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<Trial
         return Ok(None);
     }
 
-    // Relaxed daemon auth only trusts ~/.local/bin outside the target tree
+    // The writable PATH directory is only a convenience location for a shim
+    // The shim target must remain inside the trusted trial build tree
     let preferred_dir = env::var_os("HOME")
         .map(PathBuf::from)
         .map(|home| home.join(".local").join("bin"));
@@ -130,8 +131,8 @@ pub(super) fn select_trial_shim_dir(
         .iter()
         .position(|entry| path_entries_match(entry, preferred_dir))?;
 
-    // Trial auth only trusts ~/.local/bin outside the build tree, so skip every
-    // other writable PATH directory even if it would be earlier
+    // A shim is useful only when the trusted local-bin entry can win PATH lookup
+    // Skip every other writable PATH directory even if it would be earlier
     if let Some((existing_index, _)) = existing {
         // If an older command wins PATH resolution before ~/.local/bin, a shim
         // here would never be observed by the shell
@@ -158,17 +159,6 @@ pub(super) fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -
     // Canonical comparison handles symlinks without trusting a raw path string
     let canonical = canonicalize_best_effort(path);
     if canonical == canonicalize_best_effort(ctl_bin) {
-        return true;
-    }
-
-    // Trial auth also trusts ~/.local/bin/noticenterctl
-    let local_bin = env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|home| home.join(".local").join("bin").join("noticenterctl"));
-    if local_bin
-        .as_deref()
-        .is_some_and(|candidate| canonicalize_best_effort(candidate) == canonical)
-    {
         return true;
     }
 

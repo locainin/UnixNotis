@@ -63,10 +63,10 @@ pub(in crate::daemon) fn is_trusted_control_executable_path_relaxed_in_dir(
         return false;
     }
 
-    // Keep trust scoped to known local build/install locations in trial mode
+    // Writable launcher and shim paths are convenience locations, never trust roots
+    // Trial mode still binds authorization to the actual executable in the known tree
     trusted_path_matches_executable(trusted_dir, executable, path)
         || trusted_profile_sibling_matches_executable(trusted_dir, executable, path)
-        || trusted_local_bin_matches_executable(executable, path)
 }
 
 pub(in crate::daemon) fn trusted_path_matches_executable(
@@ -95,21 +95,6 @@ pub(in crate::daemon) fn trusted_profile_sibling_matches_executable(
         .iter()
         .map(|variant| target_root.join(variant).join(executable))
         .any(|candidate| canonicalize_best_effort(&candidate) == observed)
-}
-
-pub(in crate::daemon) fn trusted_local_bin_matches_executable(
-    executable: &str,
-    observed: &Path,
-) -> bool {
-    // Installed keybinds usually point to ~/.local/bin during trial sessions
-    let Some(home) = std::env::var_os("HOME") else {
-        return false;
-    };
-    let candidate = PathBuf::from(home)
-        .join(".local")
-        .join("bin")
-        .join(executable);
-    canonicalize_best_effort(&candidate) == observed
 }
 
 pub(in crate::daemon::auth) fn trusted_control_directory() -> Option<PathBuf> {

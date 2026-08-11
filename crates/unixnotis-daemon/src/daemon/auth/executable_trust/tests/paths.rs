@@ -1,10 +1,9 @@
 use super::super::paths::{
     canonicalize_best_effort, is_trusted_control_executable_path_relaxed_in_dir,
-    trusted_local_bin_matches_executable, trusted_path_matches_executable,
-    trusted_profile_sibling_matches_executable,
+    trusted_path_matches_executable, trusted_profile_sibling_matches_executable,
 };
 use crate::daemon::auth::support::write_executable;
-use crate::test_support::{env_lock, EnvVarGuard, TempRoot};
+use crate::test_support::TempRoot;
 
 #[test]
 fn trusted_path_match_requires_exact_canonical_sibling() {
@@ -55,46 +54,6 @@ fn trusted_profile_sibling_requires_debug_or_release_target_root() {
 }
 
 #[test]
-fn trusted_local_bin_uses_home_local_bin_exactly() {
-    let _guard = env_lock();
-    let home = TempRoot::new("auth-home");
-    let local_ctl = home.join(".local/bin/noticenterctl");
-    let wrong_name = home.join(".local/bin/untrusted");
-    let outside = home.join("bin/noticenterctl");
-    write_executable(&local_ctl);
-    write_executable(&wrong_name);
-    write_executable(&outside);
-    let _home = EnvVarGuard::set("HOME", home.path());
-
-    assert!(trusted_local_bin_matches_executable(
-        "noticenterctl",
-        &canonicalize_best_effort(&local_ctl)
-    ));
-    assert!(!trusted_local_bin_matches_executable(
-        "noticenterctl",
-        &canonicalize_best_effort(&outside)
-    ));
-    assert!(!trusted_local_bin_matches_executable(
-        "noticenterctl",
-        &canonicalize_best_effort(&wrong_name)
-    ));
-}
-
-#[test]
-fn trusted_local_bin_requires_home() {
-    let _guard = env_lock();
-    let root = TempRoot::new("auth-no-home");
-    let local_ctl = root.join(".local/bin/noticenterctl");
-    write_executable(&local_ctl);
-    let _home = EnvVarGuard::remove("HOME");
-
-    assert!(!trusted_local_bin_matches_executable(
-        "noticenterctl",
-        &canonicalize_best_effort(&local_ctl)
-    ));
-}
-
-#[test]
 fn relaxed_path_check_accepts_safe_trusted_sibling() {
     let root = TempRoot::new("auth-relaxed-sibling");
     let trusted = root.join("noticenterctl");
@@ -104,6 +63,60 @@ fn relaxed_path_check_accepts_safe_trusted_sibling() {
         &canonicalize_best_effort(&trusted),
         root.path()
     ));
+}
+
+#[test]
+fn relaxed_path_check_rejects_arbitrary_local_bin_components() {
+    // Writable launcher paths are not executable trust roots in trial mode
+    let root = TempRoot::new("auth-local-bin-components");
+    let trusted_dir = root.join("target/debug");
+    let local_bin = root.join(".local/bin");
+    std::fs::create_dir_all(&trusted_dir).expect("trusted directory");
+    std::fs::create_dir_all(&local_bin).expect("local bin");
+
+    for executable in [
+        "noticenterctl",
+        "unixnotis-center",
+        "unixnotis-popups",
+        "unixnotis-daemon",
+    ] {
+        let forged = local_bin.join(executable);
+        write_executable(&forged);
+
+        assert!(!is_trusted_control_executable_path_relaxed_in_dir(
+            &forged,
+            &trusted_dir,
+        ));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn relaxed_path_check_accepts_local_bin_symlink_to_trial_binary() {
+    // PATH convenience remains supported when the symlink resolves into the
+    // known trial build tree rather than to an arbitrary local-bin executable
+    let root = TempRoot::new("auth-local-bin-symlink");
+    let trusted_dir = root.join("target/debug");
+    let local_bin = root.join(".local/bin");
+    std::fs::create_dir_all(&trusted_dir).expect("trusted directory");
+    std::fs::create_dir_all(&local_bin).expect("local bin");
+
+    for executable in [
+        "noticenterctl",
+        "unixnotis-center",
+        "unixnotis-popups",
+        "unixnotis-daemon",
+    ] {
+        let target = trusted_dir.join(executable);
+        let shim = local_bin.join(executable);
+        write_executable(&target);
+        std::os::unix::fs::symlink(&target, &shim).expect("trial symlink");
+
+        assert!(is_trusted_control_executable_path_relaxed_in_dir(
+            &canonicalize_best_effort(&shim),
+            &trusted_dir,
+        ));
+    }
 }
 
 #[test]

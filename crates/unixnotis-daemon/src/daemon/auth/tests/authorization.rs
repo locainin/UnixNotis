@@ -14,7 +14,7 @@ use super::credentials::CallerCredentials;
 use super::executable_trust::paths::canonicalize_best_effort;
 use super::policy::TRUSTED_INTERACTION_EXECUTABLES;
 use super::support::write_executable;
-use crate::test_support::{daemon_state_for_test, env_lock, EnvVarGuard, TempRoot};
+use crate::test_support::{daemon_state_for_test, TempRoot};
 
 fn open_test_executable(path: &std::path::Path) -> OwnedFd {
     File::open(path).expect("open test executable").into()
@@ -90,27 +90,23 @@ fn control_uid_error_is_none_only_for_matching_uid() {
 }
 
 #[test]
-fn control_executable_error_requires_present_allowed_trusted_binary() {
-    let _guard = env_lock();
-    let home = TempRoot::new("auth-executable-error");
-    let trusted = home.join(".local/bin/noticenterctl");
-    let untrusted_name = home.join(".local/bin/unknown");
-    write_executable(&trusted);
+fn control_executable_error_rejects_missing_or_untrusted_binary() {
+    let root = TempRoot::new("auth-executable-error");
+    let untrusted_name = root.join(".local/bin/noticenterctl");
     write_executable(&untrusted_name);
-    let _home = EnvVarGuard::set("HOME", home.path());
-    let trusted = canonicalize_best_effort(&trusted);
     let untrusted_name = canonicalize_best_effort(&untrusted_name);
+    let untrusted_fd = open_test_executable(&untrusted_name);
 
-    let trusted_fd = open_test_executable(&trusted);
-
+    // An allowed executable name still fails when its file object is outside
+    // the trusted build or install tree
     assert!(control_executable_error(
-        Some(&trusted),
-        Some(&trusted_fd),
+        Some(&untrusted_name),
+        Some(&untrusted_fd),
         &["noticenterctl"],
         true,
         &HashMap::new(),
     )
-    .is_none());
+    .is_some());
     assert!(control_executable_error::<OwnedFd>(
         None,
         None::<&OwnedFd>,
@@ -120,16 +116,8 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
     )
     .is_some());
     assert!(control_executable_error(
-        Some(&trusted),
-        Some(&trusted_fd),
-        &["unixnotis-center"],
-        true,
-        &HashMap::new(),
-    )
-    .is_some());
-    assert!(control_executable_error(
         Some(&untrusted_name),
-        Some(&trusted_fd),
+        Some(&untrusted_fd),
         &["unknown"],
         true,
         &HashMap::new(),
@@ -138,37 +126,67 @@ fn control_executable_error_requires_present_allowed_trusted_binary() {
 }
 
 #[test]
-fn interaction_executable_policy_excludes_noninteractive_control_clients() {
-    let _guard = env_lock();
-    let home = TempRoot::new("auth-interaction-executable");
-    let center = home.join(".local/bin/unixnotis-center");
-    let popups = home.join(".local/bin/unixnotis-popups");
-    let cli = home.join(".local/bin/noticenterctl");
-    write_executable(&center);
-    write_executable(&popups);
-    write_executable(&cli);
-    let _home = EnvVarGuard::set("HOME", home.path());
+fn interaction_executable_policy_rejects_untrusted_components() {
+    let root = TempRoot::new("auth-interaction-executable");
+    for executable in ["unixnotis-center", "unixnotis-popups"] {
+        let path = root.join(".local/bin").join(executable);
+        write_executable(&path);
+        let path = canonicalize_best_effort(&path);
+        let fd = open_test_executable(&path);
 
-    for trusted_ui in [&center, &popups] {
-        let trusted_fd = open_test_executable(trusted_ui);
+        // Renderer names do not create trust for arbitrary local-bin files
         assert!(control_executable_error::<OwnedFd>(
-            Some(&canonicalize_best_effort(trusted_ui)),
-            Some(&trusted_fd),
+            Some(&path),
+            Some(&fd),
             &TRUSTED_INTERACTION_EXECUTABLES,
             true,
             &HashMap::new(),
         )
-        .is_none());
+        .is_some());
     }
+
+    let cli = root.join(".local/bin/noticenterctl");
+    write_executable(&cli);
+    let cli = canonicalize_best_effort(&cli);
     let cli_fd = open_test_executable(&cli);
+
+    // The CLI is not an interactive renderer, even when its name is allowed
+    // by another control policy
     assert!(control_executable_error::<OwnedFd>(
-        Some(&canonicalize_best_effort(&cli)),
+        Some(&cli),
         Some(&cli_fd),
         &TRUSTED_INTERACTION_EXECUTABLES,
         true,
         &HashMap::new(),
     )
     .is_some());
+}
+
+#[test]
+fn trial_control_authorization_rejects_all_arbitrary_local_bin_components() {
+    // Every privileged component name still requires a trusted-tree executable
+    let root = TempRoot::new("auth-local-bin-components");
+
+    for executable in [
+        "noticenterctl",
+        "unixnotis-center",
+        "unixnotis-popups",
+        "unixnotis-daemon",
+    ] {
+        let forged = root.join(".local/bin").join(executable);
+        write_executable(&forged);
+        let forged_path = canonicalize_best_effort(&forged);
+        let forged_fd = open_test_executable(&forged_path);
+
+        assert!(control_executable_error(
+            Some(&forged_path),
+            Some(&forged_fd),
+            &[executable],
+            true,
+            &HashMap::new(),
+        )
+        .is_some());
+    }
 }
 
 #[cfg(target_os = "linux")]
