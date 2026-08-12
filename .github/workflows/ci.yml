@@ -193,7 +193,30 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a dbus-run-session -- \
-            cargo test --workspace --all-targets --all-features
+            bash -c '
+              set -euo pipefail
+              user_bus_dir="/run/user/$(id -u)"
+              stable_bus="${user_bus_dir}/bus"
+              session_bus="${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
+              session_bus="${session_bus%%,guid=*}"
+              case "$session_bus" in
+                /*) ;;
+                *)
+                  echo "dbus-run-session did not provide a filesystem bus address" >&2
+                  exit 1
+                  ;;
+              esac
+              mkdir -p "$user_bus_dir"
+              chmod 0700 "$user_bus_dir"
+              if [[ ! -e "$stable_bus" && ! -L "$stable_bus" ]]; then
+                ln -s -- "$session_bus" "$stable_bus"
+                cleanup_stable_bus() {
+                  rm -f -- "$stable_bus"
+                }
+                trap cleanup_stable_bus EXIT
+              fi
+              cargo test --workspace --all-targets --all-features
+            '
 
       - name: Run dependency audit
         run: cargo audit --deny warnings

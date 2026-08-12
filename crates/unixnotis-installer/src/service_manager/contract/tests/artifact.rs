@@ -224,6 +224,10 @@ fn artifact_inspection_propagates_non_missing_path_errors() {
 
 #[test]
 fn managed_marker_inspection_propagates_permission_errors() {
+    // Root bypasses directory mode bits, so this boundary cannot be observed in root CI
+    if rustix::process::getuid().as_raw() == 0 {
+        return;
+    }
     let root = test_root("managed-marker-inspection-error");
     let service_dir = root.join("service");
     fs::create_dir_all(&service_dir).expect("create managed service directory");
