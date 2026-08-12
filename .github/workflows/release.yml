@@ -117,6 +117,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Trust checked-out repository
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
       - name: Verify release source commit
         env:
           RELEASE_TAG: ${{ inputs.tag }}
