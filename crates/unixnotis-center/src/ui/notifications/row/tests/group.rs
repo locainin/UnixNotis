@@ -273,7 +273,8 @@ fn unresolved_group_keeps_unverified_claimed_branding_separate_from_trust() {
         "claim:example-chat".to_string(),
     );
     // A claimed desktop id is presentation-only and does not authenticate the sender
-    unresolved.image.claimed_desktop_id = "folder".to_string();
+    // A symbolic fixture keeps this attribution test independent from raster-worker timing
+    unresolved.image.claimed_desktop_id = "application-x-executable-symbolic".to_string();
     let data = RowData::group_header(
         Rc::from("claim:example-chat"),
         2,
