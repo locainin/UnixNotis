@@ -135,7 +135,7 @@ cmd = "scripts/probe.sh"
 #[test]
 fn import_review_ignores_unknown_command_decoys_and_includes_plain_payload() {
     let export_root = TempDirGuard::new("command-decoy-export");
-    let mut config = String::from("config_version = 2\n[theme]\nbase_css = \"base.css\"\n");
+    let mut config = String::from("[theme]\nbase_css = \"base.css\"\n");
     for index in 0..64 {
         config.push_str(&format!("[aaa{index:02}]\ncmd = \"true\"\n"));
     }

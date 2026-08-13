@@ -7,6 +7,7 @@
   background: alpha(@theme_bg_color, 0.92);
 }
 
+.unixnotis-reload-notice-content,
 .unixnotis-reload-notice-text {
   min-width: 0;
 }
@@ -15,4 +16,9 @@
   min-width: 28px;
   min-height: 28px;
   padding: 0;
+}
+
+/* GtkSearchEntry has no public icon child, so the native glyphs yield to owned controls */
+.unixnotis-panel-search-owned-icons {
+  -gtk-icon-source: none;
 }

@@ -18,6 +18,8 @@ fn handle_local_command_runs_css_check_branch() {
             Ok(())
         },
         |_| -> Result<()> { panic!("preset runner should not be called for css check") },
+        |_| -> Result<()> { panic!("session runner should not be called for css check") },
+        |_| -> Result<()> { panic!("theme runner should not be called for css check") },
     )
     .expect("css check should dispatch");
 
@@ -43,6 +45,8 @@ fn handle_local_command_runs_preset_branch_with_command_payload() {
             preset_called.set(true);
             Ok(())
         },
+        |_| -> Result<()> { panic!("session runner should not be called for preset command") },
+        |_| -> Result<()> { panic!("theme runner should not be called for preset command") },
     )
     .expect("preset should dispatch");
 

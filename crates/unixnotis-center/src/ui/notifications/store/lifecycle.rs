@@ -2,7 +2,7 @@
 //!
 //! These helpers own the base storage lifecycle so mutation code can stay focused on updates
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +13,13 @@ use super::item::{RowData, RowItem, RowPresentation};
 use super::types::{NotificationEntry, NotificationList};
 
 impl NotificationList {
+    pub fn clear_for_disconnect(&mut self) {
+        // Preserve group preferences while the old daemon generation is absent
+        let previous_expansion = std::mem::take(&mut self.group_expanded);
+        self.seed(Vec::new(), Vec::new());
+        self.group_expanded = previous_expansion;
+    }
+
     pub fn apply_limits(&mut self, max_active: usize, max_entries: usize) {
         let mut changed = false;
         if self.max_active != max_active {
@@ -35,7 +42,7 @@ impl NotificationList {
         self.entries.clear();
         self.active_order.clear();
         self.history_order.clear();
-        clear_seed_group_expansion(&mut self.group_expanded);
+        let previous_expansion = std::mem::take(&mut self.group_expanded);
         self.group_headers.clear();
         self.group_order.clear();
         self.group_order_scratch.clear();
@@ -54,6 +61,15 @@ impl NotificationList {
             self.insert_entry(notification, false);
         }
         self.trim_to_limits();
+        // Preserve the user's open groups when the daemon sends a new seed
+        self.group_expanded = previous_expansion
+            .into_iter()
+            .filter(|(key, _)| {
+                self.entries
+                    .values()
+                    .any(|entry| entry.app_key.as_ref() == key.as_ref())
+            })
+            .collect();
 
         debug!(
             active = self.active_order.len(),
@@ -87,13 +103,21 @@ impl NotificationList {
         is_active: bool,
     ) -> Rc<str> {
         let id = notification.id;
-        let app_key = self.intern_key(&notification.app_name);
+        let app_key = self.intern_key(&notification.attribution.group_key);
+        let received_at_ms = notification
+            .received_at_unix_seconds
+            .checked_mul(1_000)
+            .filter(|timestamp| *timestamp > 0)
+            .unwrap_or_else(now_millis);
         let view = Rc::new(notification);
-        let received_at_ms = now_millis();
         let presentation = RowPresentation {
             received_at_ms,
             show_metadata: self.show_notification_metadata,
             show_thumbnail: self.show_notification_thumbnails,
+            show_avatar: self.show_notification_avatars,
+            reduced_motion: self.reduced_motion,
+            metadata: self.notification_metadata.clone(),
+            card_corners: self.notification_corners,
         };
         let item = RowItem::new(RowData::notification(
             app_key.clone(),
@@ -131,16 +155,12 @@ impl NotificationList {
 }
 
 fn now_millis() -> i64 {
-    // Local receipt time avoids adding timestamp fields to the D-Bus model
+    // Local receipt time is a fallback for legacy or malformed timestamp values
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
         .and_then(|duration| i64::try_from(duration.as_millis()).ok())
         .unwrap_or(0)
-}
-
-fn clear_seed_group_expansion(group_expanded: &mut HashMap<Rc<str>, bool>) {
-    group_expanded.clear();
 }
 
 fn drain_order_over_limit(order: &mut VecDeque<u32>, max_entries: usize) -> Vec<u32> {

@@ -2,7 +2,6 @@ use super::super::block::{HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START};
 use super::super::{ensure_hyprland_autostart, remove_hyprland_autostart};
 use crate::actions::ActionContext;
 use crate::app::events::UiMessage;
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -28,10 +27,6 @@ fn hyprland_autostart_supports_config_symlink_to_regular_file_inside_home() {
     symlink(&target, &config_link).expect("config symlink");
     let _home = EnvGuard::set("HOME", &home);
     let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &config_home);
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths {
         repo_root: root.clone(),
         bin_dir: root.join("bin"),
@@ -39,7 +34,6 @@ fn hyprland_autostart_supports_config_symlink_to_regular_file_inside_home() {
     };
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -85,10 +79,6 @@ fn ensure_hyprland_autostart_rejects_config_symlink_outside_home() {
     symlink(&outside, &config_link).expect("config symlink");
     let _home = EnvGuard::set("HOME", &home);
     let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &config_home);
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths {
         repo_root: root.clone(),
         bin_dir: root.join("bin"),
@@ -96,7 +86,6 @@ fn ensure_hyprland_autostart_rejects_config_symlink_outside_home() {
     };
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -134,10 +123,6 @@ fn remove_hyprland_autostart_strips_managed_block_from_real_config() {
     )
     .expect("hypr config");
     let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &config_home);
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths {
         repo_root: root.clone(),
         bin_dir: root.join("bin"),
@@ -145,7 +130,6 @@ fn remove_hyprland_autostart_strips_managed_block_from_real_config() {
     };
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,

@@ -1,13 +1,14 @@
 //! Session and tool availability checks
 
 use std::env;
-use std::fs::OpenOptions;
 use std::path::Path;
 
 use crate::paths::{InstallPaths, ServiceManagerChoice};
-use crate::service_manager::{CommandSpec, ReadinessIssue, ServiceManager};
+use crate::service_manager::contract::{ServiceManagerAvailability, ServiceProbeState};
+use crate::service_manager::{ReadinessIssue, ServiceManager};
 use crate::system_tools;
-use unixnotis_core::program_in_path;
+use crate::toolchain::resolve_cargo;
+use unixnotis_core::filesystem::{remove_regular_file, write_file_if_missing};
 
 use super::CheckItem;
 
@@ -46,32 +47,51 @@ pub(super) fn service_manager_check_from(manager: &ServiceManager) -> CheckItem 
         // Hard readiness errors are shown before running optional availability probes
         return CheckItem::fail("Service manager", &detail);
     }
-    if let Some(spec) = manager.availability_command() {
-        // Backends with a native availability command still report softer setup warnings
-        return availability_check_item(manager, &spec, &issues);
-    }
-    if let Some(detail) = readiness_warning_detail(manager, &issues) {
-        // Some experimental backends have no global probe, so warnings become the check result
-        return CheckItem::warn("Service manager", &detail);
-    }
-    // Some managers have no cheap global probe, so backend readiness is the availability check
-    CheckItem::ok("Service manager", &format!("{} ready", manager.label()))
-}
-
-fn availability_check_item(
-    manager: &ServiceManager,
-    spec: &CommandSpec,
-    issues: &[ReadinessIssue],
-) -> CheckItem {
-    match spec.to_command().and_then(|mut command| command.status()) {
-        Ok(status) if status.success() => match readiness_warning_detail(manager, issues) {
-            // A manager can be available while still needing user setup for autostart
-            Some(detail) => CheckItem::warn("Service manager", &detail),
-            None => CheckItem::ok("Service manager", &format!("{} available", manager.label())),
-        },
-        Ok(_) => CheckItem::fail(
+    // One semantic interpreter is shared with conflict detection and activation checks
+    match manager.availability_state() {
+        Ok(Some(ServiceManagerAvailability::Available)) => {
+            available_manager_check_item(manager, &issues)
+        }
+        Ok(Some(ServiceManagerAvailability::Unavailable)) => CheckItem::fail(
             "Service manager",
             &format!("{} unavailable", manager.label()),
+        ),
+        Ok(Some(ServiceManagerAvailability::Indeterminate)) => CheckItem::fail(
+            "Service manager",
+            &format!("{} availability is indeterminate", manager.label()),
+        ),
+        Ok(None) => native_service_probe_check_item(manager, &issues),
+        Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
+    }
+}
+
+fn available_manager_check_item(manager: &ServiceManager, issues: &[ReadinessIssue]) -> CheckItem {
+    readiness_warning_detail(manager, issues).map_or_else(
+        || CheckItem::ok("Service manager", &format!("{} available", manager.label())),
+        |detail| CheckItem::warn("Service manager", &detail),
+    )
+}
+
+fn native_service_probe_check_item(
+    manager: &ServiceManager,
+    issues: &[ReadinessIssue],
+) -> CheckItem {
+    // Runit and s6 have no separate manager transport query, so their bounded service probe
+    // decides whether the selected backend can be inspected without inventing another contract
+    match manager.active_probe().evaluate_state() {
+        Ok(ServiceProbeState::Absent | ServiceProbeState::Inactive | ServiceProbeState::Active) => {
+            readiness_warning_detail(manager, issues).map_or_else(
+                || CheckItem::ok("Service manager", &format!("{} ready", manager.label())),
+                |detail| CheckItem::warn("Service manager", &detail),
+            )
+        }
+        Ok(ServiceProbeState::Unavailable) => CheckItem::fail(
+            "Service manager",
+            &format!("{} unavailable", manager.label()),
+        ),
+        Ok(ServiceProbeState::Indeterminate) => CheckItem::fail(
+            "Service manager",
+            &format!("{} state is indeterminate", manager.label()),
         ),
         Err(err) => CheckItem::fail("Service manager", &format!("check failed: {err}")),
     }
@@ -114,10 +134,9 @@ pub(super) fn cargo_check(release_archive: bool) -> CheckItem {
         return CheckItem::ok("cargo", "not required for release archive");
     }
 
-    if program_in_path("cargo") {
-        CheckItem::ok("cargo", "available")
-    } else {
-        CheckItem::fail("cargo", "not installed")
+    match resolve_cargo() {
+        Ok(_) => CheckItem::ok("cargo", "available"),
+        Err(_) => CheckItem::fail("cargo", "not installed in approved toolchain locations"),
     }
 }
 
@@ -218,15 +237,13 @@ fn path_is_writable(path: &Path) -> bool {
     }
     let probe_name = format!(".unixnotis-installer-probe-{}", std::process::id());
     let probe_path = target_dir.join(probe_name);
-    let result = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&probe_path);
-    if result.is_err() {
-        return false;
+    match write_file_if_missing(&probe_path, b"", 0o600) {
+        Ok(true) => {
+            // Cleanup must succeed before the directory is reported as writable
+            remove_regular_file(&probe_path).is_ok_and(|removed| removed)
+        }
+        Ok(false) | Err(_) => false,
     }
-    let _ = std::fs::remove_file(&probe_path);
-    true
 }
 
 #[cfg(test)]

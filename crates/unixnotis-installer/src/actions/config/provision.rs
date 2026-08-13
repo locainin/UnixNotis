@@ -1,21 +1,23 @@
 //! Config and theme file creation or reset logic
 
-use std::fs;
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use unixnotis_core::Config;
+use unixnotis_core::{
+    filesystem::open_regular_file,
+    filesystem::{create_directory_all, write_file_atomic, write_file_if_missing, ContainedPath},
+    render_default_config_toml, reset_config_to_defaults, Config, ResetConfigOptions,
+    CURRENT_CONFIG_VERSION, DEFAULT_BASE_CSS, DEFAULT_MEDIA_CSS, DEFAULT_PANEL_CSS,
+    DEFAULT_POPUP_CSS, DEFAULT_WIDGETS_CSS,
+};
 
 use crate::paths::format_with_home;
 
 use super::super::{log_line, ActionContext};
-use super::backup::{
-    backup_existing_file, create_backup_dir, ensure_installer_config, load_installer_config,
-    write_atomic,
-};
+use super::backup::{ensure_installer_config, load_installer_config};
 
 pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
-    let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
     let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
     log_line(
@@ -23,143 +25,83 @@ pub fn ensure_config(ctx: &mut ActionContext) -> Result<()> {
         format!("Config directory: {}", format_with_home(&config_dir)),
     );
 
-    // Create the config root first so later file writes do not race missing parents
-    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
-
-    if config_path.exists() {
+    let config = if config_path.exists() {
         log_line(
             ctx,
             format!("Config file present: {}", format_with_home(&config_path)),
         );
+
+        // Existing theme paths are part of the configuration contract
+        Config::load_from_path(&config_path).map_err(|error| {
+            // Parser details may contain private config text, so only a stable summary is shown
+            anyhow!(
+                "existing configuration cannot be loaded ({}); schema v{} is required; use Reset config to back it up and create current defaults",
+                error.shareable_summary(),
+                CURRENT_CONFIG_VERSION
+            )
+        })?
     } else {
+        let config = Config::default();
         // Write a default config so there is always a working base to edit
         let config_toml = render_default_config_toml(&config)?;
-        write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
+        write_file_atomic(&config_path, config_toml.as_bytes(), 0o644)
+            .with_context(|| "failed to write config.toml")?;
         log_line(
             ctx,
             format!("Config file created: {}", format_with_home(&config_path)),
         );
-    }
+
+        config
+    };
 
     ensure_installer_config(ctx, &config_dir)?;
     ensure_default_scripts(ctx, &config_dir)?;
-
-    let theme_paths = config
-        .resolve_theme_paths()
-        .map_err(|err| anyhow!(err.to_string()))?;
-    let theme_entries = [
-        ("base.css", &theme_paths.base_css),
-        ("panel.css", &theme_paths.panel_css),
-        ("popup.css", &theme_paths.popup_css),
-        ("widgets.css", &theme_paths.widgets_css),
-        ("media.css", &theme_paths.media_css),
-    ];
-
-    let pre_existing = theme_entries
-        .iter()
-        .map(|(_, path)| path.exists())
-        .collect::<Vec<_>>();
-
-    config
-        .ensure_theme_files(&theme_paths)
-        .map_err(|err| anyhow!(err.to_string()))?;
-
-    for ((name, path), existed) in theme_entries.iter().zip(pre_existing.iter()) {
-        let status = if *existed { "present" } else { "created" };
-        log_line(
-            ctx,
-            format!(
-                "Theme file {}: {} ({})",
-                name,
-                status,
-                format_with_home(path)
-            ),
-        );
+    for provision in ensure_default_theme_files(&config, &config_dir)? {
+        let path = format_with_home(&provision.path);
+        let message = match provision.status {
+            ThemeFileStatus::Created => format!("Default theme CSS created: {path}"),
+            ThemeFileStatus::Present => format!("Default theme CSS present: {path}"),
+            ThemeFileStatus::ExternalManaged => {
+                format!("External theme CSS preserved: {path}")
+            }
+            ThemeFileStatus::ExternalMissing => {
+                format!("External theme CSS missing; runtime fallback remains active: {path}")
+            }
+            ThemeFileStatus::ExternalUnsafe => {
+                format!("External theme CSS is unsafe; runtime fallback remains active: {path}")
+            }
+        };
+        log_line(ctx, message);
     }
+
+    log_line(ctx, "Theme CSS provisioning complete".to_string());
 
     Ok(())
 }
 
 pub fn reset_config(ctx: &mut ActionContext) -> Result<()> {
-    let config = Config::default();
     let config_dir = Config::default_config_dir().map_err(|err| anyhow!(err.to_string()))?;
-    let config_path = Config::default_config_path().map_err(|err| anyhow!(err.to_string()))?;
-
-    fs::create_dir_all(&config_dir).with_context(|| "failed to create config directory")?;
     ensure_installer_config(ctx, &config_dir)?;
-
-    let installer_config = load_installer_config(&config_dir, ctx);
-    let backup_dir = create_backup_dir(ctx, &config_dir, installer_config.backups.keep)?;
-
-    // Preserve the live config before writing defaults over it
-    backup_existing_file(ctx, &config_path, "config.toml", backup_dir.as_deref())?;
-
-    let config_toml = render_default_config_toml(&config)?;
-    write_atomic(&config_path, &config_toml).with_context(|| "failed to write config.toml")?;
+    let installer_config = load_installer_config(&config_dir).context("load installer settings")?;
+    let report = reset_config_to_defaults(&ResetConfigOptions {
+        config_dir: config_dir.clone(),
+        backup_retention: installer_config.backups.keep,
+    })
+    .context("reset configuration to defaults")?;
+    if let Some(backup_dir) = report.backup_dir {
+        log_line(
+            ctx,
+            format!(
+                "Backed up existing configuration to {}",
+                format_with_home(&backup_dir)
+            ),
+        );
+    }
     log_line(
         ctx,
-        format!(
-            "Reset config file to defaults: {}",
-            format_with_home(&config_path)
-        ),
+        "Reset config file and bundled scripts to defaults".to_string(),
     );
-
-    let theme_paths = config
-        .resolve_theme_paths()
-        .map_err(|err| anyhow!(err.to_string()))?;
-
-    // Backup theme files before reset so user styling is still recoverable
-    backup_existing_file(
-        ctx,
-        &theme_paths.base_css,
-        "base.css",
-        backup_dir.as_deref(),
-    )?;
-    backup_existing_file(
-        ctx,
-        &theme_paths.panel_css,
-        "panel.css",
-        backup_dir.as_deref(),
-    )?;
-    backup_existing_file(
-        ctx,
-        &theme_paths.popup_css,
-        "popup.css",
-        backup_dir.as_deref(),
-    )?;
-    backup_existing_file(
-        ctx,
-        &theme_paths.widgets_css,
-        "widgets.css",
-        backup_dir.as_deref(),
-    )?;
-    backup_existing_file(
-        ctx,
-        &theme_paths.media_css,
-        "media.css",
-        backup_dir.as_deref(),
-    )?;
-    backup_default_scripts(ctx, &config_dir, backup_dir.as_deref())?;
-
-    write_atomic(&theme_paths.base_css, unixnotis_core::DEFAULT_BASE_CSS)
-        .with_context(|| "failed to write base.css")?;
-    write_atomic(&theme_paths.panel_css, unixnotis_core::DEFAULT_PANEL_CSS)
-        .with_context(|| "failed to write panel.css")?;
-    write_atomic(&theme_paths.popup_css, unixnotis_core::DEFAULT_POPUP_CSS)
-        .with_context(|| "failed to write popup.css")?;
-    write_atomic(
-        &theme_paths.widgets_css,
-        unixnotis_core::DEFAULT_WIDGETS_CSS,
-    )
-    .with_context(|| "failed to write widgets.css")?;
-    write_atomic(&theme_paths.media_css, unixnotis_core::DEFAULT_MEDIA_CSS)
-        .with_context(|| "failed to write media.css")?;
-    write_default_scripts(&config_dir)?;
-
-    log_line(
-        ctx,
-        format!("Reset theme files in {}", format_with_home(&config_dir)),
-    );
+    log_line(ctx, "Reset theme CSS files to current defaults".to_string());
     Ok(())
 }
 
@@ -187,39 +129,77 @@ fn ensure_default_scripts(ctx: &mut ActionContext, config_dir: &Path) -> Result<
     Ok(())
 }
 
-fn backup_default_scripts(
-    ctx: &mut ActionContext,
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum ThemeFileStatus {
+    Created,
+    Present,
+    ExternalManaged,
+    ExternalMissing,
+    ExternalUnsafe,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ThemeFileProvision {
+    path: PathBuf,
+    status: ThemeFileStatus,
+}
+
+fn ensure_default_theme_files(
+    config: &Config,
     config_dir: &Path,
-    backup_dir: Option<&Path>,
-) -> Result<()> {
-    for script in unixnotis_core::DEFAULT_SCRIPTS {
-        let path = config_dir.join(script.relative_path);
-        backup_existing_file(ctx, &path, script.relative_path, backup_dir)?;
-    }
-    Ok(())
+) -> Result<Vec<ThemeFileProvision>> {
+    // Use the generated configuration paths so provisioning matches runtime loading
+    let paths = config
+        .resolve_theme_paths_from(config_dir)
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let files = [
+        (paths.base_css, DEFAULT_BASE_CSS),
+        (paths.panel_css, DEFAULT_PANEL_CSS),
+        (paths.popup_css, DEFAULT_POPUP_CSS),
+        (paths.widgets_css, DEFAULT_WIDGETS_CSS),
+        (paths.media_css, DEFAULT_MEDIA_CSS),
+    ];
+
+    files
+        .into_iter()
+        .map(|(path, contents)| {
+            // Provisioning may only create files beneath the active config directory
+            let path = match ContainedPath::resolve(config_dir, &path) {
+                Ok(contained) => contained.absolute(),
+                Err(_) => {
+                    return Ok(ThemeFileProvision {
+                        status: classify_external_theme_file(&path),
+                        path,
+                    });
+                }
+            };
+            // Nested configured paths need secure parents before exclusive creation
+            if let Some(parent) = path.parent() {
+                create_directory_all(parent, 0o700)
+                    .with_context(|| format!("create theme directory {}", parent.display()))?;
+            }
+            // Exclusive creation preserves custom files and rejects unsafe targets
+            let created = write_file_if_missing(&path, contents.as_bytes(), 0o644)
+                .with_context(|| format!("provision {}", path.display()))?;
+            Ok(ThemeFileProvision {
+                path,
+                status: if created {
+                    ThemeFileStatus::Created
+                } else {
+                    ThemeFileStatus::Present
+                },
+            })
+        })
+        .collect()
 }
 
-pub(in crate::actions::config) fn write_default_scripts(config_dir: &Path) -> Result<()> {
-    Config::write_default_scripts_in(config_dir).map_err(|err| anyhow!(err.to_string()))
-}
-
-pub(in crate::actions::config) fn render_default_config_toml(config: &Config) -> Result<String> {
-    let mut config_toml = toml::to_string_pretty(config).map_err(|err| anyhow!(err.to_string()))?;
-    let panel_height_line = format!("height = {}\n", config.panel.height);
-    let panel_height_block = format!(
-        "# Vertical size as a percent of usable monitor height after margins\n\
-# and reserved work area\n\
-height = {}\n\
-\n\
-# Exact pixel height override for advanced users\n\
-# height_override = 1487\n",
-        config.panel.height
-    );
-
-    if !config_toml.contains(&panel_height_line) {
-        return Err(anyhow!("default config template missing panel height line"));
+pub(super) fn classify_external_theme_file(path: &Path) -> ThemeFileStatus {
+    match open_regular_file(path) {
+        Ok(file) => {
+            drop(file);
+            ThemeFileStatus::ExternalManaged
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => ThemeFileStatus::ExternalMissing,
+        Err(_) => ThemeFileStatus::ExternalUnsafe,
     }
-
-    config_toml = config_toml.replacen(&panel_height_line, &panel_height_block, 1);
-    Ok(config_toml)
 }

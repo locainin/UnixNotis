@@ -6,7 +6,27 @@ pub mod shared_state {
     pub const CRITICAL: &str = "critical";
     pub const EMPTY: &str = "empty";
     pub const PLAYING: &str = "playing";
-    pub const STACKED: &str = "stacked";
+    pub const COLLAPSED_GROUP_PREVIEW: &str = "collapsed-group-preview";
+}
+
+pub mod urgency {
+    // One badge class keeps popup and panel urgency labels visually aligned
+    pub const BADGE: &str = "unixnotis-urgency-badge";
+}
+
+pub mod cut_corner {
+    // The wrapper hook lets themes adjust the primitive without using its custom CSS node name
+    pub const ROOT: &str = "unixnotis-cut-corner";
+}
+
+pub mod dnd_menu {
+    // Timed DND hooks expose the popover layers without relying on GTK node names
+    pub const ROOT: &str = "unixnotis-dnd-menu";
+    pub const CONTENT: &str = "unixnotis-dnd-menu-content";
+    pub const TITLE: &str = "unixnotis-dnd-menu-title";
+    pub const CHOICE: &str = "unixnotis-dnd-menu-choice";
+    pub const INDEFINITE: &str = "unixnotis-dnd-menu-choice-indefinite";
+    pub const SEPARATOR: &str = "unixnotis-dnd-menu-separator";
 }
 
 pub mod panel_action {
@@ -31,6 +51,7 @@ pub mod panel_shell {
     // Panel shell hooks keep split panel files on one stable class contract
     pub const WINDOW: &str = "unixnotis-panel-window";
     pub const ROOT: &str = "unixnotis-panel";
+    pub const REDUCED_MOTION: &str = "unixnotis-reduced-motion";
     pub const HEADER: &str = "unixnotis-panel-header";
     pub const HEADER_TOP: &str = "unixnotis-panel-header-top";
     pub const TITLE_STACK: &str = "unixnotis-panel-title-stack";
@@ -39,6 +60,9 @@ pub mod panel_shell {
     pub const SUBTITLE: &str = "unixnotis-panel-subtitle";
     pub const COUNT: &str = "unixnotis-panel-count";
     pub const SEARCH: &str = "unixnotis-panel-search";
+    pub const SEARCH_MAGNIFIER: &str = "unixnotis-panel-search-magnifier";
+    pub const SEARCH_CLEAR: &str = "unixnotis-panel-search-clear";
+    pub const SEARCH_OWNED_ICONS: &str = "unixnotis-panel-search-owned-icons";
     pub const SEARCH_SHELL: &str = "unixnotis-panel-search-shell";
     pub const SEARCH_ACCENT: &str = "unixnotis-panel-search-accent";
     pub const SEARCH_STAR: &str = "unixnotis-panel-search-star";
@@ -46,6 +70,7 @@ pub mod panel_shell {
     pub const RELOAD_NOTICE: &str = "unixnotis-reload-notice";
     pub const RELOAD_NOTICE_ERROR: &str = "unixnotis-reload-notice-error";
     pub const RELOAD_NOTICE_WARNING: &str = "unixnotis-reload-notice-warning";
+    pub const RELOAD_NOTICE_CONTENT: &str = "unixnotis-reload-notice-content";
     pub const RELOAD_NOTICE_TEXT: &str = "unixnotis-reload-notice-text";
     pub const RELOAD_NOTICE_CLOSE: &str = "unixnotis-reload-notice-close";
     pub const BODY_STACK: &str = "unixnotis-panel-body-stack";
@@ -84,8 +109,8 @@ pub mod panel_card {
     pub const FOOTER_LEFT: &str = "unixnotis-panel-card-footer-left";
     pub const FOOTER_RIGHT: &str = "unixnotis-panel-card-footer-right";
     pub const THUMBNAIL: &str = "unixnotis-panel-card-thumbnail";
-    pub const GROUP_COLLAPSED: &str = "unixnotis-panel-card-group-collapsed";
-    pub const GROUP_EXPANDED: &str = "unixnotis-panel-card-group-expanded";
+    pub const CONTENT_IMAGE: &str = "unixnotis-panel-content-image";
+    pub const SENDER_VISUAL: &str = "unixnotis-panel-sender-visual";
     pub const GROUPED: &str = "unixnotis-panel-card-grouped";
     pub const HAS_ACTIONS: &str = "unixnotis-panel-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-panel-card-has-body";
@@ -158,6 +183,7 @@ pub mod popup_card {
     pub const HAS_ACTIONS: &str = "unixnotis-popup-card-has-actions";
     pub const HAS_BODY: &str = "unixnotis-popup-card-has-body";
     pub const HAS_ICON: &str = "unixnotis-popup-card-has-icon";
+    pub const HAS_IMAGE: &str = "unixnotis-popup-card-has-image";
     pub const HAS_SUMMARY: &str = "unixnotis-popup-card-has-summary";
     pub const NO_ICON: &str = "unixnotis-popup-card-no-icon";
 }
@@ -179,11 +205,6 @@ pub mod group_row {
 pub mod empty_row {
     pub const ROOT: &str = "unixnotis-empty";
     pub const LABEL: &str = "unixnotis-empty-label";
-}
-
-pub mod ghost_row {
-    pub const ROOT: &str = "unixnotis-stack-ghost";
-    pub const DEPTH_PREFIX: &str = "unixnotis-stack-ghost-";
 }
 
 pub mod media_card {

@@ -120,7 +120,24 @@ async fn run_connection_once(
                     // Property listeners belong to this connection and must be rebuilt together
                     return false;
                 };
-                handle_runtime_signal(&mut state, &signal_tx, sender, signal).await;
+                match signal {
+                    MediaSignal::FairnessLeaseExpired { generation } => {
+                        // Only the current lease may request a full discovery pass
+                        if state.mpris_fairness.consume_wakeup(generation) {
+                            refresh = true;
+                        }
+                    }
+                    MediaSignal::PropertiesChanged { bus_name, origin } => {
+                        handle_runtime_signal(
+                            &mut state,
+                            &signal_tx,
+                            sender,
+                            bus_name,
+                            origin,
+                        )
+                        .await;
+                    }
+                }
             }
             retry = owner_retry_rx.recv() => {
                 if retry.is_none() {

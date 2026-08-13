@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use gtk::gdk;
 use unixnotis_core::{ThemeConfig, ThemePaths};
@@ -11,6 +13,7 @@ use super::super::model::{CssManager, CssManagerInner};
 use crate::css::manager::layers::CssProviderLayer;
 use crate::css::manager::provider::CssProviderBackend;
 use crate::css::manager::report::CssLayerSource;
+use crate::css::{start_css_watcher, CssKind};
 
 #[derive(Clone)]
 struct RecordingProvider {
@@ -79,16 +82,80 @@ fn panel_manager(
     paths: ThemePaths,
     loaded: Rc<RefCell<Vec<(&'static str, String)>>>,
 ) -> CssManagerInner<RecordingProvider> {
+    let theme_config = ThemeConfig::default();
     CssManagerInner {
         theme_paths: paths,
-        theme_config: ThemeConfig::default(),
+        theme_config,
         internal_structure: RecordingProvider::new("internal", Rc::clone(&loaded)),
         base: RecordingProvider::new("base", Rc::clone(&loaded)),
         panel: Some(RecordingProvider::new("panel", Rc::clone(&loaded))),
         widgets: Some(RecordingProvider::new("widgets", Rc::clone(&loaded))),
         media: Some(RecordingProvider::new("media", Rc::clone(&loaded))),
+        motion_policy: Some(RecordingProvider::new("motion", Rc::clone(&loaded))),
         popup: None,
     }
+}
+
+fn popup_manager(
+    paths: ThemePaths,
+    loaded: Rc<RefCell<Vec<(&'static str, String)>>>,
+) -> CssManagerInner<RecordingProvider> {
+    CssManagerInner {
+        theme_paths: paths,
+        theme_config: ThemeConfig::default(),
+        internal_structure: RecordingProvider::new("internal", Rc::clone(&loaded)),
+        base: RecordingProvider::new("base", Rc::clone(&loaded)),
+        panel: None,
+        widgets: None,
+        media: None,
+        motion_policy: None,
+        popup: Some(RecordingProvider::new("popup", loaded)),
+    }
+}
+
+#[test]
+fn configured_css_loads_without_a_theme_manifest() {
+    let root = unique_theme_root("without-manifest");
+    let paths = theme_paths(&root);
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    write_theme(&paths, "magenta");
+    let manager = panel_manager(paths, Rc::clone(&loaded));
+
+    let report = manager.reload(".fallback { color: red; }");
+
+    assert!(report
+        .layers
+        .iter()
+        .all(|layer| layer.source == CssLayerSource::Custom));
+    assert!(loaded
+        .borrow()
+        .iter()
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
+        .all(|(_label, css)| css.contains("magenta")));
+    fs::remove_dir_all(root).expect("remove css manager test root");
+}
+
+#[test]
+fn incompatible_theme_manifest_does_not_block_configured_css() {
+    let root = unique_theme_root("incompatible-theme");
+    let paths = theme_paths(&root);
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    write_theme(&paths, "magenta");
+    fs::write(paths.manifest_path(), "api_version = 1\nname = \"Old\"\n").expect("old manifest");
+    let manager = panel_manager(paths, Rc::clone(&loaded));
+
+    let report = manager.reload(".fallback { color: red; }");
+
+    assert!(report
+        .layers
+        .iter()
+        .all(|layer| layer.source == CssLayerSource::Custom));
+    assert!(loaded
+        .borrow()
+        .iter()
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
+        .all(|(_, css)| css.contains("magenta")));
+    fs::remove_dir_all(root).expect("remove incompatible theme test root");
 }
 
 #[test]
@@ -118,16 +185,20 @@ fn panel_reload_loads_base_panel_widgets_and_media_layers() {
     let labels = loaded.iter().map(|(label, _)| *label).collect::<Vec<_>>();
     assert_eq!(
         labels,
-        vec!["internal", "base", "panel", "widgets", "media"]
+        vec!["internal", "base", "panel", "widgets", "media", "motion"]
     );
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| css.contains("green")));
     assert!(loaded
         .iter()
         .find(|(label, _)| *label == "internal")
         .is_some_and(|(_, css)| css.contains(".unixnotis-reload-notice")));
+    assert!(loaded
+        .iter()
+        .find(|(label, _)| *label == "motion")
+        .is_some_and(|(_, css)| css.contains(".unixnotis-reduced-motion")));
 
     fs::remove_dir_all(root).expect("remove css manager test root");
 }
@@ -143,18 +214,19 @@ fn update_theme_changes_the_paths_used_by_the_next_reload() {
     write_theme(&new_paths, "blue");
     let mut manager = panel_manager(old_paths, Rc::clone(&loaded));
 
-    manager.update_theme(new_paths, ThemeConfig::default());
+    let theme = ThemeConfig::default();
+    manager.update_theme(new_paths, theme);
     let report = manager.reload(".fallback { color: red; }");
 
     assert_eq!(report.layers.len(), 4);
     let loaded = loaded.borrow();
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| css.contains("blue")));
     assert!(loaded
         .iter()
-        .filter(|(label, _)| *label != "internal")
+        .filter(|(label, _)| matches!(*label, "base" | "panel" | "widgets" | "media"))
         .all(|(_, css)| !css.contains("red")));
 
     fs::remove_dir_all(old_root).expect("remove old css manager test root");
@@ -169,9 +241,10 @@ fn public_manager_reload_and_theme_update_report_the_applied_stack() {
     let new_paths = theme_paths(&new_root);
     write_theme(&old_paths, "red");
     write_theme(&new_paths, "blue");
-    let mut manager = CssManager::new_panel(old_paths, ThemeConfig::default());
+    let theme = ThemeConfig::default();
+    let mut manager = CssManager::new_panel(old_paths, theme.clone());
 
-    manager.update_theme(new_paths.clone(), ThemeConfig::default());
+    manager.update_theme(new_paths.clone(), theme);
     let report = manager.reload(".fallback { color: red; }");
 
     assert_eq!(report.layers.len(), 4);
@@ -209,4 +282,48 @@ fn reload_report_distinguishes_empty_and_unreadable_theme_files() {
     assert!(media.error.is_some());
 
     fs::remove_dir_all(root).expect("remove css fallback test root");
+}
+
+#[test]
+fn popup_css_watcher_reloads_file_changes_without_a_manifest() {
+    let root = unique_theme_root("watcher");
+    let paths = theme_paths(&root);
+    // The first load must use the configured file even though no theme manifest exists
+    fs::write(&paths.popup_css, ".popup { color: red; }").expect("write first popup CSS");
+    let loaded = Rc::new(RefCell::new(Vec::new()));
+    let manager = popup_manager(paths.clone(), Rc::clone(&loaded));
+    let initial = manager.reload(".fallback {}");
+    assert_eq!(
+        initial
+            .layers
+            .iter()
+            .find(|layer| layer.layer == CssProviderLayer::Popup)
+            .expect("popup layer")
+            .source,
+        CssLayerSource::Custom
+    );
+    assert!(loaded
+        .borrow()
+        .iter()
+        .any(|(label, css)| *label == "popup" && css.contains("red")));
+
+    let (reload_tx, reload_rx) = mpsc::channel();
+    start_css_watcher(&paths, CssKind::Popup, move || {
+        let _ = reload_tx.send(());
+    })
+    .expect("start popup CSS watcher");
+    // Atomic replacement mirrors a normal editor save and exercises the directory watcher
+    let replacement = root.join("popup.css.tmp");
+    fs::write(&replacement, ".popup { color: green; }").expect("write replacement popup CSS");
+    fs::rename(&replacement, &paths.popup_css).expect("atomically replace popup CSS");
+    reload_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("watcher should report the popup replacement");
+
+    manager.reload(".fallback {}");
+    assert!(loaded
+        .borrow()
+        .iter()
+        .any(|(label, css)| *label == "popup" && css.contains("green")));
+    fs::remove_dir_all(root).expect("remove css manager test directory");
 }

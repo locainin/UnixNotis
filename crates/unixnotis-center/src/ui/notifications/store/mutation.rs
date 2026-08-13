@@ -3,7 +3,9 @@
 //! These paths own entry-level changes after the list has already been constructed
 
 use tracing::debug;
-use unixnotis_core::{should_archive_closed_notification, CloseReason, NotificationView};
+use unixnotis_core::{
+    should_archive_closed_notification, CloseReason, NotificationKey, NotificationView,
+};
 
 use super::types::NotificationList;
 
@@ -11,16 +13,26 @@ impl NotificationList {
     pub fn add_or_update(&mut self, notification: NotificationView, is_active: bool) {
         let id = notification.id;
         let existing_entry = self.entries.get(&id);
+        if existing_entry.is_some_and(|entry| entry.view.generation > notification.generation) {
+            // Reordered signals must never roll a row back to an older payload
+            debug!(
+                id,
+                generation = notification.generation,
+                "stale row update skipped"
+            );
+            return;
+        }
         let old_group = existing_entry.map(|entry| entry.app_key.clone());
         let was_in_active = existing_entry.is_some_and(|entry| entry.is_active);
         let was_in_history = existing_entry.is_some() && !was_in_active;
         // Snapshot ordering state before any mutations; used to decide whether a full rebuild
         // is necessary because rebuilds are expensive for large histories
         let was_front = self.active_order.front().copied() == Some(id);
-        let needs_new_key =
-            existing_entry.is_some_and(|entry| entry.view.app_name != notification.app_name);
+        let needs_new_key = existing_entry.is_some_and(|entry| {
+            entry.view.attribution.group_key != notification.attribution.group_key
+        });
         let new_key = if needs_new_key {
-            Some(self.intern_key(&notification.app_name))
+            Some(self.intern_key(&notification.attribution.group_key))
         } else {
             None
         };
@@ -64,41 +76,42 @@ impl NotificationList {
             if let Some(entry) = self.entries.get(&id) {
                 if !self.group_span_matches_visible_shape(&entry.app_key) {
                     // Span changes still need the rebuild path
-                    // Header count and card depth must move as one visible update
+                    // Header count and collapsed preview state must move as one visible update
                     self.dirty_groups.insert(entry.app_key.clone());
                     self.request_rebuild();
-                    debug!(id, active = is_active, "notification stack shape changed");
+                    debug!(id, active = is_active, "notification group shape changed");
                     return;
                 }
 
-                // Compute stack state from cached grouping instead of rebuilding the store
+                // Compute preview state from cached grouping instead of rebuilding the store
                 let expanded = self
                     .group_expanded
                     .get(&entry.app_key)
                     .copied()
                     .unwrap_or(false);
                 let group_len = self.grouped_cache.get(&entry.app_key).map_or(0, Vec::len);
-                let stacked = collapsed_group_is_stacked(expanded, group_len);
-                let stack_depth = if expanded {
-                    0
-                } else {
-                    group_len.saturating_sub(1).min(2) as u8
-                };
+                let collapsed_group_preview = is_collapsed_group_preview(expanded, group_len);
+                let stack_depth = super::blocks::collapsed_stack_depth(group_len, expanded);
                 let presentation = super::item::RowPresentation {
                     received_at_ms: entry.received_at_ms,
                     show_metadata: self.show_notification_metadata,
                     show_thumbnail: self.show_notification_thumbnails,
+                    show_avatar: self.show_notification_avatars,
+                    reduced_motion: self.reduced_motion,
+                    metadata: self.notification_metadata.clone(),
+                    card_corners: self.notification_corners,
                 };
                 // Update the row object in-place when the visible span stays identical
-                entry.item.update(super::item::RowData::notification(
+                let row = super::item::RowData::notification(
                     entry.app_key.clone(),
                     entry.view.clone(),
-                    stacked,
+                    collapsed_group_preview,
                     stack_depth,
                     expanded,
                     entry.is_active,
                     presentation,
-                ));
+                );
+                entry.item.update(row);
                 if let Some(ids) = self.grouped_cache.get(&entry.app_key) {
                     if ids.first().copied() == Some(id) {
                         let expanded = self
@@ -156,7 +169,16 @@ impl NotificationList {
         self.request_rebuild();
     }
 
-    pub fn mark_closed(&mut self, id: u32, reason: CloseReason) {
+    pub fn mark_closed(&mut self, key: NotificationKey, reason: CloseReason) {
+        let id = key.id;
+        let Some(current) = self.entries.get(&id) else {
+            return;
+        };
+        if current.view.generation != key.generation {
+            // A close for an older generation cannot mutate its replacement
+            debug!(id, generation = key.generation, "stale row close skipped");
+            return;
+        }
         let group_key = self.entries.get(&id).map(|entry| entry.app_key.clone());
         let should_archive = self.entries.get(&id).is_some_and(|entry| {
             should_archive_entry(entry.view.as_ref(), reason, self.transient_to_history)
@@ -237,7 +259,7 @@ const fn should_move_active_to_front(
     was_in_history || !was_in_active || !was_front
 }
 
-const fn collapsed_group_is_stacked(expanded: bool, group_len: usize) -> bool {
+const fn is_collapsed_group_preview(expanded: bool, group_len: usize) -> bool {
     !expanded && group_len > 1
 }
 

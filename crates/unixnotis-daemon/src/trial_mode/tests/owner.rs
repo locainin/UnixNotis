@@ -1,91 +1,69 @@
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::time::{SystemTime, UNIX_EPOCH};
+use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
+use zbus::Connection;
 
-use crate::system_tools::routing::use_fake_tool_bin;
-
-use super::{is_unit_active, pgrep_exact, read_args, read_comm};
-
-struct TempDirGuard {
-    path: std::path::PathBuf,
-}
-
-impl TempDirGuard {
-    fn new(label: &str) -> Self {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock moved backwards")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "unixnotis-trial-owner-{label}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("create temp dir");
-        Self { path }
-    }
-
-    fn write_executable(&self, name: &str, contents: &str) {
-        let path = self.path.join(name);
-        fs::write(&path, contents).expect("write fake tool");
-        let mut permissions = fs::metadata(&path)
-            .expect("fake tool metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(path, permissions).expect("chmod fake tool");
-    }
-}
-
-impl Drop for TempDirGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
+use super::{detect_owner, ensure_owner_is_current};
+use crate::trial_mode::state::NotificationOwnerState;
 
 #[tokio::test]
-async fn is_unit_active_uses_trusted_systemctl_exit_status() {
-    let root = TempDirGuard::new("systemctl-active");
-    root.write_executable(
-        "systemctl",
-        "#!/bin/sh\ncase \"$*\" in *mako.service*) exit 0;; *) exit 3;; esac\n",
+async fn broker_failure_does_not_become_an_unowned_notification_name() {
+    let connection = Connection::session().await.expect("session bus connection");
+    let proxy = DBusProxy::new(&connection).await.expect("D-Bus proxy");
+    connection.close().await.expect("close test bus connection");
+    let notifications =
+        BusName::try_from(unixnotis_core::NOTIFICATIONS_BUS_NAME).expect("Notifications bus name");
+
+    assert!(
+        detect_owner(&proxy, notifications).await.is_err(),
+        "broker failure must remain an error"
     );
-    let _tools = use_fake_tool_bin(&root.path);
-
-    assert!(is_unit_active("mako.service").await);
-    assert!(!is_unit_active("dunst.service").await);
 }
 
 #[tokio::test]
-async fn pgrep_exact_parses_only_numeric_pids() {
-    let root = TempDirGuard::new("pgrep");
-    root.write_executable("pgrep", "#!/bin/sh\nprintf '12\\nnot-a-pid\\n34\\n'\n");
-    let _tools = use_fake_tool_bin(&root.path);
+async fn owner_handoff_after_inspection_blocks_the_stop_precondition() {
+    let owner_a = Connection::session().await.expect("first owner connection");
+    let owner_b = Connection::session()
+        .await
+        .expect("second owner connection");
+    let observer = Connection::session().await.expect("observer connection");
+    let name = format!("com.unixnotis.TrialOwner.p{}", std::process::id());
+    owner_a
+        .request_name(name.as_str())
+        .await
+        .expect("first owner acquires test name");
+    let proxy = DBusProxy::new(&observer)
+        .await
+        .expect("observer D-Bus proxy");
+    let inspected = match detect_owner(
+        &proxy,
+        BusName::try_from(name.as_str()).expect("test bus name"),
+    )
+    .await
+    .expect("inspect first owner")
+    {
+        NotificationOwnerState::Owned(owner) => owner,
+        NotificationOwnerState::Unowned => panic!("test name must be owned"),
+    };
+    owner_a
+        .release_name(name.as_str())
+        .await
+        .expect("first owner releases test name");
+    owner_b
+        .request_name(name.as_str())
+        .await
+        .expect("second owner acquires test name");
 
-    let pids = pgrep_exact("mako").await;
+    let error = ensure_owner_is_current(
+        &proxy,
+        BusName::try_from(name.as_str()).expect("test bus name"),
+        &inspected,
+    )
+    .await
+    .expect_err("owner handoff must block process stopping");
 
-    assert_eq!(pids, [12, 34]);
-}
-
-#[tokio::test]
-async fn read_comm_uses_trusted_ps_fallback_when_procfs_is_missing() {
-    let root = TempDirGuard::new("comm");
-    root.write_executable("ps", "#!/bin/sh\nprintf 'mako\\n'\n");
-    let _tools = use_fake_tool_bin(&root.path);
-
-    let comm = read_comm(u32::MAX).await;
-
-    assert_eq!(comm.as_deref(), Some("mako"));
-}
-
-#[tokio::test]
-async fn read_args_uses_trusted_ps_fallback_when_procfs_is_missing() {
-    let root = TempDirGuard::new("args");
-    root.write_executable(
-        "ps",
-        "#!/bin/sh\nprintf '/usr/bin/mako --config mako.conf\\n'\n",
-    );
-    let _tools = use_fake_tool_bin(&root.path);
-
-    let args = read_args(u32::MAX).await.expect("fallback args");
-
-    assert_eq!(args, ["/usr/bin/mako", "--config", "mako.conf"]);
+    assert!(error.to_string().contains("owner changed"));
+    owner_b
+        .release_name(name.as_str())
+        .await
+        .expect("release second test owner");
 }

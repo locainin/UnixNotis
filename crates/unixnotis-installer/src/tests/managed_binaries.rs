@@ -22,6 +22,7 @@ fn managed_binary_names_accept_the_complete_runtime_set() {
         "unixnotis-daemon",
         "unixnotis-popups",
         "unixnotis-center",
+        "unixnotis-svg-renderer",
         "unixnotis-css-validate",
         "noticenterctl",
     ]

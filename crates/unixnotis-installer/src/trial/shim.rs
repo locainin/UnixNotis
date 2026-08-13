@@ -1,12 +1,15 @@
 //! Temporary `noticenterctl` PATH shim management for trial mode
 
 use std::env;
+#[cfg(not(unix))]
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
+use unixnotis_core::filesystem::{
+    create_directory_all, create_symlink_if_missing, read_symlink, remove_symlink_if_target,
+    CreateSymlinkOutcome, RemoveSymlinkOutcome,
+};
 
 use super::paths::{
     canonicalize_best_effort, find_command_on_path_with_index, path_dir_is_writable, path_entries,
@@ -39,7 +42,8 @@ pub(super) fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<Trial
         return Ok(None);
     }
 
-    // Relaxed daemon auth only trusts ~/.local/bin outside the target tree
+    // The writable PATH directory is only a convenience location for a shim
+    // The shim target must remain inside the trusted trial build tree
     let preferred_dir = env::var_os("HOME")
         .map(PathBuf::from)
         .map(|home| home.join(".local").join("bin"));
@@ -75,13 +79,24 @@ pub(super) fn ensure_trial_control_access(ctl_bin: &Path) -> Result<Option<Trial
     #[cfg(unix)]
     {
         // Symlink keeps the shim small and follows rebuilds of the debug control binary
-        unix_fs::symlink(&target, &shim_path).map_err(|err| {
+        match create_symlink_if_missing(&shim_path, &target).map_err(|err| {
             anyhow!(
                 "failed to create trial noticenterctl shim at {}: {}",
                 shim_path.display(),
                 err
             )
-        })?;
+        })? {
+            CreateSymlinkOutcome::Created => {}
+            CreateSymlinkOutcome::Unchanged | CreateSymlinkOutcome::TargetMismatch(_) => {
+                // A path that appeared after the earlier check is not owned by this trial
+                println!(
+                    "Trial control command path changed before creation: {}",
+                    shim_path.display()
+                );
+                println!("Use {} directly during trial", ctl_bin.display());
+                return Ok(None);
+            }
+        }
     }
     #[cfg(not(unix))]
     {
@@ -116,8 +131,8 @@ pub(super) fn select_trial_shim_dir(
         .iter()
         .position(|entry| path_entries_match(entry, preferred_dir))?;
 
-    // Trial auth only trusts ~/.local/bin outside the build tree, so skip every
-    // other writable PATH directory even if it would be earlier
+    // A shim is useful only when the trusted local-bin entry can win PATH lookup
+    // Skip every other writable PATH directory even if it would be earlier
     if let Some((existing_index, _)) = existing {
         // If an older command wins PATH resolution before ~/.local/bin, a shim
         // here would never be observed by the shell
@@ -128,7 +143,7 @@ pub(super) fn select_trial_shim_dir(
 
     if !preferred_dir.exists() {
         // Creating ~/.local/bin is safe only after confirming the path can matter
-        fs::create_dir_all(preferred_dir)
+        create_directory_all(preferred_dir, 0o755)
             .map_err(|err| anyhow!("failed to create {}: {}", preferred_dir.display(), err))
             .ok()?;
     }
@@ -144,17 +159,6 @@ pub(super) fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -
     // Canonical comparison handles symlinks without trusting a raw path string
     let canonical = canonicalize_best_effort(path);
     if canonical == canonicalize_best_effort(ctl_bin) {
-        return true;
-    }
-
-    // Trial auth also trusts ~/.local/bin/noticenterctl
-    let local_bin = env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|home| home.join(".local").join("bin").join("noticenterctl"));
-    if local_bin
-        .as_deref()
-        .is_some_and(|candidate| canonicalize_best_effort(candidate) == canonical)
-    {
         return true;
     }
 
@@ -176,39 +180,30 @@ pub(super) fn trial_control_command_is_compatible(path: &Path, ctl_bin: &Path) -
 pub(super) fn remove_trial_control_shim(path: &Path, expected_target: &Path) -> Result<bool> {
     #[cfg(unix)]
     {
-        let metadata = match fs::symlink_metadata(path) {
-            Ok(metadata) => metadata,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(err) => {
+        let target = match read_symlink(path) {
+            Ok(Some(target)) => target,
+            Ok(None) => return Ok(false),
+            // A replaced regular file is user state, not trial-owned cleanup state
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => return Ok(false),
+            Err(error) => {
                 return Err(anyhow!(
                     "failed to inspect trial noticenterctl shim at {}: {}",
                     path.display(),
-                    err
+                    error
                 ));
             }
         };
-        if !metadata.file_type().is_symlink() {
-            // A replaced regular file is user state, not trial-owned cleanup state
-            return Ok(false);
-        }
-        let target = fs::read_link(path).map_err(|err| {
-            anyhow!(
-                "failed to inspect trial noticenterctl shim target at {}: {}",
-                path.display(),
-                err
-            )
-        })?;
         if !trial_shim_target_matches(path, &target, expected_target) {
             return Ok(false);
         }
-        fs::remove_file(path).map_err(|err| {
+        let outcome = remove_symlink_if_target(path, &target).map_err(|err| {
             anyhow!(
                 "failed to remove trial noticenterctl shim at {}: {}",
                 path.display(),
                 err
             )
         })?;
-        Ok(true)
+        Ok(matches!(outcome, RemoveSymlinkOutcome::Removed))
     }
 
     #[cfg(not(unix))]

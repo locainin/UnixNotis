@@ -77,6 +77,10 @@ impl MediaWidget {
         self.root.set_visible(false);
     }
 
+    pub(in crate::ui) fn set_reduced_motion(&self, reduced_motion: bool) {
+        self.card.title_label.set_reduced_motion(reduced_motion);
+    }
+
     pub(in crate::ui) fn matches_layout(&self, config: &MediaConfig) -> bool {
         self.shell == MediaShellConfig::from_config(config)
     }

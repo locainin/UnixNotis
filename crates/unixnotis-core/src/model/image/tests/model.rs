@@ -1,20 +1,20 @@
 use super::super::{
-    ImageData, NotificationImage, MAX_ICON_NAME_BYTES, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION,
-    MAX_IMAGE_PATH_BYTES,
+    ImageData, NotificationImage, NotificationVisualRole, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION,
 };
 
 #[test]
 fn image_models_default_to_empty_bounded_payloads() {
-    let data = ImageData::default();
     let image = NotificationImage::default();
-
-    assert_eq!(data.width, 0);
-    assert!(data.data.is_empty());
-    assert!(!image.has_image_data);
-    assert!(image.image_path.is_empty());
-    assert!(image.icon_name.is_empty());
+    assert!(image.badge_icon.is_empty());
+    assert_eq!(image.sender_visual_role, NotificationVisualRole::None);
+    assert!(image.sender_visual.data.is_empty());
+    assert!(image.content_image.data.is_empty());
     assert_eq!(MAX_IMAGE_BYTES, 256 * 1024);
     assert_eq!(MAX_IMAGE_DIMENSION, 256);
-    assert_eq!(MAX_IMAGE_PATH_BYTES, 1024);
-    assert_eq!(MAX_ICON_NAME_BYTES, 256);
+    assert_eq!(NotificationImage::retained_byte_limit(), MAX_IMAGE_BYTES);
+    assert_eq!(
+        NotificationImage::retained_dimension_limit(),
+        MAX_IMAGE_DIMENSION
+    );
+    assert_eq!(ImageData::default().width, 0);
 }

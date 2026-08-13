@@ -10,11 +10,14 @@ pub mod references;
 pub mod tokens;
 // URI byte checks are shared by import policy and runtime rebasing
 mod uri;
+// Keep the shared CSS-size policy separate from this module façade
+mod limits;
 
 pub use self::features::{
     gtk_css_features_for_version, gtk_css_features_from_version_string, GtkCssFeatures,
-    GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL,
+    GTK_MIN_VERSION_LABEL,
 };
+pub use self::limits::MAX_CSS_FILE_BYTES;
 pub use self::references::{
     collect_css_import_dependency_values, collect_css_import_url_spans, collect_css_import_values,
     collect_css_url_spans, collect_css_url_values, CssImportReference, CssReference,

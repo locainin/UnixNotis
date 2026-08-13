@@ -61,17 +61,29 @@ impl ReleaseStatus {
         }
     }
 
-    pub fn display_line(&self) -> String {
-        // Keep the line compact because it sits in the installer status panel
-        match (self.state, self.latest.as_deref()) {
-            (ReleaseUpdateState::UpdateAvailable, Some(latest)) => {
-                format!("{} installed; {latest} available", self.current)
+    pub fn display_line_for(&self, version: &str, role: &str) -> String {
+        // The version role prevents installer-build and installed-binary state from being conflated
+        match self.latest.as_deref() {
+            Some(latest)
+                if self.update_state_for(version) == ReleaseUpdateState::UpdateAvailable =>
+            {
+                format!("{version} {role}; {latest} available")
             }
-            (ReleaseUpdateState::UpToDate, Some(latest)) => {
-                format!("{} installed; latest release is {latest}", self.current)
-            }
-            _ => format!("{} installed; update check unavailable", self.current),
+            Some(latest) => format!("{version} {role}; latest release is {latest}"),
+            None => format!("{version} {role}; update check unavailable"),
         }
+    }
+
+    pub fn update_state_for(&self, version: &str) -> ReleaseUpdateState {
+        self.latest
+            .as_deref()
+            .map_or(ReleaseUpdateState::Unknown, |latest| {
+                if release_tag_is_newer(latest, version) {
+                    ReleaseUpdateState::UpdateAvailable
+                } else {
+                    ReleaseUpdateState::UpToDate
+                }
+            })
     }
 }
 

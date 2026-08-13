@@ -21,14 +21,14 @@ fn vim_keys_move_welcome_menu_like_arrow_keys() {
     let mut app = App::new(None);
 
     // j/k should mirror Down/Up without changing menu bounds
-    handle_welcome_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
+    handle_welcome_key(&mut app, key(KeyCode::Char('j')));
     assert_eq!(app.menu_index, 1);
 
-    handle_welcome_key(&mut app, key(KeyCode::Char('k'))).expect("k should be handled");
+    handle_welcome_key(&mut app, key(KeyCode::Char('k')));
     assert_eq!(app.menu_index, 0);
 
     // Extra movement at the top should clamp instead of wrapping
-    handle_welcome_key(&mut app, key(KeyCode::Char('k'))).expect("k should clamp at top");
+    handle_welcome_key(&mut app, key(KeyCode::Char('k')));
     assert_eq!(app.menu_index, 0);
 }
 
@@ -37,7 +37,7 @@ fn welcome_menu_quit_key_exits_without_starting_action() {
     let _lock = crate::test_support::env::test_env_lock();
     let mut app = App::new(None);
 
-    let action = handle_welcome_key(&mut app, key(KeyCode::Char('q'))).expect("q should exit");
+    let action = handle_welcome_key(&mut app, key(KeyCode::Char('q')));
 
     // Quit should be an explicit exit action, not a silent screen transition
     assert!(matches!(action, Some(ExitAction::None)));
@@ -50,13 +50,13 @@ fn welcome_enter_opens_confirm_or_reset_submenu_for_selected_action() {
     let mut app = App::new(None);
 
     app.menu_index = 1;
-    handle_welcome_key(&mut app, key(KeyCode::Enter)).expect("install enter");
+    handle_welcome_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::Confirm(ActionMode::Install));
 
     app.screen = Screen::Welcome;
     app.menu_index = 2;
     app.reset_menu_index = 2;
-    handle_welcome_key(&mut app, key(KeyCode::Enter)).expect("reset enter");
+    handle_welcome_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::ResetMenu);
     assert_eq!(app.reset_menu_index, 0);
 }
@@ -67,12 +67,12 @@ fn vim_keys_move_reset_menu_like_arrow_keys() {
     let mut app = App::new(None);
 
     // Reset has a fixed three-entry menu, so j/k must stay within 0..=2
-    handle_reset_menu_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
-    handle_reset_menu_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
-    handle_reset_menu_key(&mut app, key(KeyCode::Char('j'))).expect("j should clamp");
+    handle_reset_menu_key(&mut app, key(KeyCode::Char('j')));
+    handle_reset_menu_key(&mut app, key(KeyCode::Char('j')));
+    handle_reset_menu_key(&mut app, key(KeyCode::Char('j')));
     assert_eq!(app.reset_menu_index, 2);
 
-    handle_reset_menu_key(&mut app, key(KeyCode::Char('k'))).expect("k should be handled");
+    handle_reset_menu_key(&mut app, key(KeyCode::Char('k')));
     assert_eq!(app.reset_menu_index, 1);
 }
 
@@ -82,22 +82,22 @@ fn reset_menu_escape_and_enter_select_expected_destinations() {
     let mut app = App::new(None);
     app.screen = Screen::ResetMenu;
 
-    handle_reset_menu_key(&mut app, key(KeyCode::Esc)).expect("escape should return");
+    handle_reset_menu_key(&mut app, key(KeyCode::Esc));
     assert_eq!(app.screen, Screen::Welcome);
 
     app.screen = Screen::ResetMenu;
     app.reset_menu_index = 0;
-    handle_reset_menu_key(&mut app, key(KeyCode::Enter)).expect("defaults enter");
+    handle_reset_menu_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::Confirm(ActionMode::Reset));
 
     app.screen = Screen::ResetMenu;
     app.reset_menu_index = 1;
-    handle_reset_menu_key(&mut app, key(KeyCode::Enter)).expect("restore enter");
+    handle_reset_menu_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::RestoreSelect);
 
     app.screen = Screen::ResetMenu;
     app.reset_menu_index = 2;
-    handle_reset_menu_key(&mut app, key(KeyCode::Enter)).expect("cancel enter");
+    handle_reset_menu_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::Welcome);
 }
 
@@ -107,14 +107,14 @@ fn vim_keys_move_restore_selection_only_when_backups_exist() {
     let mut app = App::new(None);
 
     // Empty restore lists should not underflow or invent a selection
-    handle_restore_select_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
+    handle_restore_select_key(&mut app, key(KeyCode::Char('j')));
     assert_eq!(app.restore_menu_index, 0);
 
     app.restore_backups = vec!["first".into(), "second".into()];
-    handle_restore_select_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
+    handle_restore_select_key(&mut app, key(KeyCode::Char('j')));
     assert_eq!(app.restore_menu_index, 1);
 
-    handle_restore_select_key(&mut app, key(KeyCode::Char('k'))).expect("k should be handled");
+    handle_restore_select_key(&mut app, key(KeyCode::Char('k')));
     assert_eq!(app.restore_menu_index, 0);
 }
 
@@ -124,16 +124,16 @@ fn restore_selection_escape_and_enter_only_confirm_existing_backup() {
     let mut app = App::new(None);
     app.screen = Screen::RestoreSelect;
 
-    handle_restore_select_key(&mut app, key(KeyCode::Enter)).expect("empty enter");
+    handle_restore_select_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::RestoreSelect);
 
     app.restore_backups = vec!["first".into(), "second".into()];
     app.restore_menu_index = 1;
-    handle_restore_select_key(&mut app, key(KeyCode::Enter)).expect("backup enter");
+    handle_restore_select_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::Confirm(ActionMode::Reset));
 
     app.screen = Screen::RestoreSelect;
-    handle_restore_select_key(&mut app, key(KeyCode::Esc)).expect("escape should return");
+    handle_restore_select_key(&mut app, key(KeyCode::Esc));
     assert_eq!(app.screen, Screen::ResetMenu);
 }
 
@@ -144,13 +144,13 @@ fn progress_screen_ignores_keys_while_running_and_returns_after_completion() {
     app.screen = Screen::Progress(ActionMode::Uninstall);
     app.progress_state = ProgressState::Running;
 
-    let action = handle_progress_key(&mut app, key(KeyCode::Char('q'))).expect("running key");
+    let action = handle_progress_key(&mut app, key(KeyCode::Char('q')));
     assert!(action.is_none());
     assert_eq!(app.screen, Screen::Progress(ActionMode::Uninstall));
 
     app.progress_state = ProgressState::Completed;
     app.progress_ready_at = None;
-    handle_progress_key(&mut app, key(KeyCode::Enter)).expect("completed enter");
+    handle_progress_key(&mut app, key(KeyCode::Enter));
     assert_eq!(app.screen, Screen::Welcome);
     assert_eq!(app.progress_state, ProgressState::Idle);
 }
@@ -163,13 +163,31 @@ fn progress_screen_quit_and_escape_work_after_action_finishes() {
     app.progress_state = ProgressState::Failed;
     app.progress_ready_at = None;
 
-    let action = handle_progress_key(&mut app, key(KeyCode::Char('Q'))).expect("quit key");
+    let action = handle_progress_key(&mut app, key(KeyCode::Char('Q')));
     assert!(matches!(action, Some(ExitAction::None)));
 
     app.screen = Screen::Progress(ActionMode::Install);
-    let action = handle_progress_key(&mut app, key(KeyCode::Esc)).expect("escape key");
+    let action = handle_progress_key(&mut app, key(KeyCode::Esc));
     assert!(action.is_none());
     assert_eq!(app.screen, Screen::Welcome);
+}
+
+#[test]
+fn recovery_required_progress_allows_only_quit() {
+    let _lock = crate::test_support::env::test_env_lock();
+    let mut app = App::new(None);
+    app.screen = Screen::Progress(ActionMode::Install);
+    app.progress_state = ProgressState::RecoveryRequired;
+    app.progress_ready_at = None;
+
+    assert!(handle_progress_key(&mut app, key(KeyCode::Enter)).is_none());
+    assert_eq!(app.screen, Screen::Progress(ActionMode::Install));
+    assert!(handle_progress_key(&mut app, key(KeyCode::Esc)).is_none());
+    assert_eq!(app.screen, Screen::Progress(ActionMode::Install));
+    assert!(matches!(
+        handle_progress_key(&mut app, key(KeyCode::Char('q'))),
+        Some(ExitAction::None)
+    ));
 }
 
 #[test]
@@ -180,7 +198,7 @@ fn progress_screen_respects_ready_delay_after_completion() {
     app.progress_state = ProgressState::Completed;
     app.progress_ready_at = Some(Instant::now() + Duration::from_mins(1));
 
-    let action = handle_progress_key(&mut app, key(KeyCode::Enter)).expect("delayed enter");
+    let action = handle_progress_key(&mut app, key(KeyCode::Enter));
 
     // The short delay prevents fast key repeats from skipping the completion state
     assert!(action.is_none());
@@ -196,7 +214,7 @@ fn completed_install_progress_enters_build_accel_prompt() {
     app.progress_state = ProgressState::Completed;
     app.progress_ready_at = None;
 
-    handle_progress_key(&mut app, key(KeyCode::Enter)).expect("completed install enter");
+    handle_progress_key(&mut app, key(KeyCode::Enter));
 
     // Successful install should offer the optional build acceleration prompt before returning
     assert_eq!(app.screen, Screen::BuildAccel);
@@ -217,11 +235,11 @@ fn vim_keys_move_build_accel_menu_like_arrow_keys() {
     });
 
     // Build acceleration uses dynamic menu length, so j/k must respect that mode
-    handle_build_accel_key(&mut app, key(KeyCode::Char('j'))).expect("j should be handled");
-    handle_build_accel_key(&mut app, key(KeyCode::Char('j'))).expect("j should clamp");
+    handle_build_accel_key(&mut app, key(KeyCode::Char('j')));
+    handle_build_accel_key(&mut app, key(KeyCode::Char('j')));
     assert_eq!(app.build_accel_menu_index, 1);
 
-    handle_build_accel_key(&mut app, key(KeyCode::Char('k'))).expect("k should be handled");
+    handle_build_accel_key(&mut app, key(KeyCode::Char('k')));
     assert_eq!(app.build_accel_menu_index, 0);
 }
 
@@ -232,11 +250,11 @@ fn build_accel_escape_and_quit_have_distinct_outcomes() {
     app.screen = Screen::BuildAccel;
     app.progress_state = ProgressState::Completed;
 
-    let quit = handle_build_accel_key(&mut app, key(KeyCode::Char('q'))).expect("quit");
+    let quit = handle_build_accel_key(&mut app, key(KeyCode::Char('q')));
     assert!(matches!(quit, Some(ExitAction::None)));
     assert_eq!(app.screen, Screen::BuildAccel);
 
-    handle_build_accel_key(&mut app, key(KeyCode::Esc)).expect("escape");
+    handle_build_accel_key(&mut app, key(KeyCode::Esc));
 
     // Escape returns to the menu and clears stale progress, unlike q which exits
     assert_eq!(app.screen, Screen::Welcome);

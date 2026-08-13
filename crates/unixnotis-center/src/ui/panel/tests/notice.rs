@@ -14,14 +14,9 @@ fn reload_notice_starts_hidden_and_dismiss_button_hides_it() {
     assert!(notice
         .label
         .has_css_class(hooks::panel_shell::RELOAD_NOTICE_TEXT));
+    assert!(notice.close.get_visible());
 
     notice.revealer.set_reveal_child(true);
-    let close = notice
-        .shell
-        .last_child()
-        .expect("notice close button")
-        .downcast::<gtk::Button>()
-        .expect("close button widget");
-    close.emit_clicked();
+    notice.close.emit_clicked();
     assert!(!notice.revealer.reveals_child());
 }

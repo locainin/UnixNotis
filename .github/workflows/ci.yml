@@ -21,6 +21,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  DEBIAN_SNAPSHOT: 20260720T000000Z
+  RUSTUP_INIT_VERSION: 1.28.2
+  RUSTUP_INIT_SHA256: 20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c
 
 defaults:
   run:
@@ -30,18 +33,57 @@ jobs:
   workspace:
     name: Workspace checks
     runs-on: ubuntu-24.04
-    container: debian:trixie-slim
+    container: debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
     timeout-minutes: 45
 
     steps:
       - name: Install system dependencies
         run: |
           set -euo pipefail
+          rm -f /etc/apt/sources.list
+          # The slim image bootstraps without a CA bundle; InRelease signatures still authenticate the immutable index
+          printf '%s\n' \
+            'Types: deb' \
+            "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
+            'Suites: trixie trixie-updates' \
+            'Components: main' \
+            'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+            '' \
+            'Types: deb' \
+            "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" \
+            'Suites: trixie-security' \
+            'Components: main' \
+            'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+            > /etc/apt/sources.list.d/debian.sources
+          printf '%s\n' 'Acquire::Check-Valid-Until "false";' \
+            > /etc/apt/apt.conf.d/99snapshot
+          apt-get update
+          verify_snapshot_index() {
+            local expected="$1"
+            local pattern="$2"
+            local path
+            path="$(find /var/lib/apt/lists -maxdepth 1 -type f -name "$pattern" -print -quit)"
+            test -n "$path"
+            printf '%s  %s\n' "$expected" "$path" | sha256sum --check --strict
+          }
+          # Pin the bootstrap indexes so HTTP cannot replay an older signed snapshot
+          verify_snapshot_index \
+            98b25b5cd185c59d34aa6e4c3e9b5b8f01bbe9d104fe2dcfbcd30dc0a14a59ed \
+            "*snapshot.debian.org_archive_debian_${DEBIAN_SNAPSHOT}_dists_trixie_InRelease"
+          verify_snapshot_index \
+            bd8aee7ca2a980563032065681fd39b1e284e511841399f3730eac279a1bd2f7 \
+            "*snapshot.debian.org_archive_debian_${DEBIAN_SNAPSHOT}_dists_trixie-updates_InRelease"
+          verify_snapshot_index \
+            ea95c17e3b9d86d71e58a90831fdfc562f59a9cf6fa5f3d1e52e537a6fbe8e41 \
+            "*snapshot.debian.org_archive_debian-security_${DEBIAN_SNAPSHOT}_dists_trixie-security_InRelease"
+          # Bootstrap the trust store over the signed snapshot index
+          apt-get install -y --no-install-recommends ca-certificates
+          sed -i 's#http://snapshot.debian.org#https://snapshot.debian.org#g' \
+            /etc/apt/sources.list.d/debian.sources
           apt-get update
           apt-get install -y --no-install-recommends \
             bash \
             build-essential \
-            ca-certificates \
             curl \
             dbus \
             git \
@@ -49,6 +91,7 @@ jobs:
             libgtk-4-dev \
             libgtk4-layer-shell-dev \
             pkg-config \
+            ripgrep \
             shellcheck \
             xauth \
             xvfb \
@@ -63,9 +106,34 @@ jobs:
       - name: Install Rust toolchain
         run: |
           set -euo pipefail
-          curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs \
-            | sh -s -- -y --default-toolchain 1.96.1 --profile minimal --component rustfmt,clippy
-          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          account_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
+          test -n "$account_home"
+          case "$account_home" in
+            /*) ;;
+            *)
+              echo "effective account home is not absolute: $account_home" >&2
+              exit 1
+              ;;
+          esac
+          # Keep the CI toolchain under the same account-owned home used by the installer
+          export HOME="$account_home"
+          export CARGO_HOME="$account_home/.cargo"
+          export RUSTUP_HOME="$account_home/.rustup"
+          printf '%s\n' \
+            "CARGO_HOME=$CARGO_HOME" \
+            "RUSTUP_HOME=$RUSTUP_HOME" \
+            >> "$GITHUB_ENV"
+          rustup_init="${RUNNER_TEMP}/rustup-init"
+          curl --proto '=https' --tlsv1.2 -fsS \
+            "https://static.rust-lang.org/rustup/archive/${RUSTUP_INIT_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+            -o "$rustup_init"
+          printf '%s  %s\n' "$RUSTUP_INIT_SHA256" "$rustup_init" \
+            | sha256sum --check --strict
+          chmod 0755 "$rustup_init"
+          "$rustup_init" -y --profile minimal --default-toolchain 1.96.1 \
+            --component rustfmt,clippy --no-modify-path
+          rm -f "$rustup_init"
+          echo "${CARGO_HOME}/bin" >> "${GITHUB_PATH}"
           source "${HOME}/.cargo/env"
           rustup default 1.96.1
           cargo install cargo-audit --locked --version 0.22.0
@@ -92,6 +160,7 @@ jobs:
           shellcheck \
             scripts/package-release.sh \
             tests/package-release.sh \
+            tests/check-release-hardening.sh \
             tests/check-test-placement.sh \
             tests/check-no-personal-paths.sh \
             crates/unixnotis-core/assets/scripts/unixnotis-blue-light-lib \
@@ -101,6 +170,7 @@ jobs:
           shellharden --check \
             scripts/package-release.sh \
             tests/package-release.sh \
+            tests/check-release-hardening.sh \
             tests/check-test-placement.sh \
             tests/check-no-personal-paths.sh
 
@@ -110,11 +180,43 @@ jobs:
       - name: Check tracked paths for personal data
         run: tests/check-no-personal-paths.sh
 
+      - name: Check release workflow hardening
+        run: tests/check-release-hardening.sh
+
       - name: Test release packaging helpers
         run: tests/package-release.sh
 
+      - name: Build SVG test helper
+        run: cargo build --package unixnotis-center --bin unixnotis-svg-renderer --all-features
+
       - name: Run workspace tests
-        run: xvfb-run -a dbus-run-session -- cargo test --workspace --all-targets --all-features
+        run: |
+          set -euo pipefail
+          xvfb-run -a dbus-run-session -- \
+            bash -c '
+              set -euo pipefail
+              user_bus_dir="/run/user/$(id -u)"
+              stable_bus="${user_bus_dir}/bus"
+              session_bus="${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
+              session_bus="${session_bus%%,guid=*}"
+              case "$session_bus" in
+                /*) ;;
+                *)
+                  echo "dbus-run-session did not provide a filesystem bus address" >&2
+                  exit 1
+                  ;;
+              esac
+              mkdir -p "$user_bus_dir"
+              chmod 0700 "$user_bus_dir"
+              if [[ ! -e "$stable_bus" && ! -L "$stable_bus" ]]; then
+                ln -s -- "$session_bus" "$stable_bus"
+                cleanup_stable_bus() {
+                  rm -f -- "$stable_bus"
+                }
+                trap cleanup_stable_bus EXIT
+              fi
+              cargo test --workspace --all-targets --all-features
+            '
 
       - name: Run dependency audit
         run: cargo audit --deny warnings

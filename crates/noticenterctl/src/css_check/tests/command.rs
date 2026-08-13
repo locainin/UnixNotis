@@ -5,6 +5,7 @@ use unixnotis_core::CURRENT_CONFIG_VERSION;
 
 use super::load_config_for_path;
 use crate::config_path::ConfigPathSource;
+use crate::test_support::{test_env_lock, EnvGuard};
 
 #[test]
 fn explicit_existing_config_is_loaded_instead_of_the_default() {
@@ -66,7 +67,9 @@ fn missing_environment_config_is_rejected() {
 
 #[test]
 fn absent_default_config_uses_builtin_defaults() {
+    let _lock = test_env_lock();
     let root = temporary_test_directory("missing-default");
+    let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &root);
     let config_path = root.join("missing.toml");
 
     let config = load_config_for_path(&config_path, ConfigPathSource::Default)

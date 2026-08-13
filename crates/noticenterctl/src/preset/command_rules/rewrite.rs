@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use unixnotis_core::{Config, SliderWidgetConfig};
+use unixnotis_core::{CommandSpec, Config, SliderWidgetConfig};
 
 use super::checks::collect_host_specific_command_paths;
 use super::tokens::rewrite_command_to_config_relative;
@@ -48,16 +48,13 @@ fn rewrite_slider_commands(config_dir: &Path, slider: &mut SliderWidgetConfig) {
     rewrite_optional_command(config_dir, &mut slider.watch_cmd);
 }
 
-fn rewrite_optional_command(config_dir: &Path, value: &mut Option<String>) {
+fn rewrite_optional_command(config_dir: &Path, value: &mut Option<CommandSpec>) {
     let Some(command) = value.as_mut() else {
         return;
     };
     rewrite_inline_command(config_dir, command);
 }
 
-fn rewrite_inline_command(config_dir: &Path, command: &mut String) {
-    let Some(rewritten) = rewrite_command_to_config_relative(config_dir, command) else {
-        return;
-    };
-    *command = rewritten;
+fn rewrite_inline_command(config_dir: &Path, command: &mut CommandSpec) {
+    let _ = rewrite_command_to_config_relative(config_dir, command);
 }

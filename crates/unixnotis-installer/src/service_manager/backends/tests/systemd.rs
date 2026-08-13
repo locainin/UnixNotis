@@ -2,15 +2,14 @@ use std::path::PathBuf;
 
 use crate::service_manager::{ServiceArtifactKind, ServiceArtifactRefresh, ServiceManager};
 
-use super::super::systemd::SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE;
+use super::super::systemd::{CONTROL_ACTIVATION_SERVICE, SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE};
 
 #[test]
 fn systemd_backend_renders_exact_unit_artifact() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
     let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
 
-    // Systemd is the stable default, so this refactor must keep the unit byte-for-byte stable
-    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts.len(), 2);
     assert_eq!(
         artifacts[0].path,
         PathBuf::from("/tmp/systemd/user").join(UNIXNOTIS_DAEMON_SERVICE)
@@ -24,15 +23,38 @@ fn systemd_backend_renders_exact_unit_artifact() {
         "[Unit]\n\
          Description=UnixNotis Notification Daemon\n\
          After=graphical-session.target\n\
+         PartOf=graphical-session.target\n\
          \n\
          [Service]\n\
-         Type=simple\n\
+         Type=dbus\n\
+         BusName=com.unixnotis.Control\n\
          ExecStart=/tmp/bin/unixnotis-daemon\n\
          Restart=on-failure\n\
          RestartSec=1\n\
+         TimeoutStartSec=20\n\
+         TimeoutStopSec=10\n\
          \n\
          [Install]\n\
          WantedBy=default.target\n"
+    );
+    assert_eq!(
+        artifacts[1].path,
+        PathBuf::from("/tmp")
+            .join("share")
+            .join("dbus-1")
+            .join("services")
+            .join(CONTROL_ACTIVATION_SERVICE)
+    );
+    assert_eq!(artifacts[1].kind, ServiceArtifactKind::File);
+    assert_eq!(
+        artifacts[1]
+            .contents
+            .as_ref()
+            .expect("activation artifact should render contents"),
+        "[D-BUS Service]\n\
+         Name=com.unixnotis.Control\n\
+         Exec=/tmp/bin/unixnotis-daemon\n\
+         SystemdService=unixnotis-daemon.service\n"
     );
 }
 
@@ -40,23 +62,7 @@ fn systemd_backend_renders_exact_unit_artifact() {
 fn systemd_backend_commands_match_existing_behavior() {
     let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
 
-    // Availability should remain a read-only user-manager query
-    let availability = manager
-        .availability_command()
-        .expect("systemd has an availability command");
-    assert_eq!(availability.program(), "systemctl");
-    assert_eq!(
-        availability.args(),
-        &[
-            "--user",
-            "--no-pager",
-            "--plain",
-            "list-units",
-            "--type=service"
-        ]
-    );
-
-    // Enabled and active probes intentionally use quiet status checks for fast install-state reads
+    // Enabled state uses the native status check while active state uses explicit properties
     let enabled = manager
         .is_enabled_command()
         .expect("systemd has an enabled-state command");
@@ -65,12 +71,28 @@ fn systemd_backend_commands_match_existing_behavior() {
         &["--user", "is-enabled", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
     );
 
-    let active = manager
-        .active_probe()
-        .expect("systemd has an active-state command");
+    let active = manager.active_probe();
     assert_eq!(
         active.command().args(),
-        &["--user", "is-active", "--quiet", UNIXNOTIS_DAEMON_SERVICE]
+        &[
+            "--user",
+            "show",
+            "--property=LoadState",
+            "--property=ActiveState",
+            UNIXNOTIS_DAEMON_SERVICE
+        ]
+    );
+    assert_eq!(
+        active.parser_state(true, "LoadState=loaded\nActiveState=inactive\n"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state(true, "LoadState=not-found\nActiveState=inactive\n"),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state(false, "Failed to connect to bus\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
     );
 
     // Unit file changes still require daemon-reload before enable/start
@@ -80,29 +102,31 @@ fn systemd_backend_commands_match_existing_behavior() {
     };
     assert_eq!(reload.args(), &["--user", "daemon-reload"]);
 
-    let enable = manager
-        .enable_now_command()
-        .expect("systemd can enable and start");
+    let enable = manager.enable_now_command();
     assert_eq!(
         enable.args(),
         &["--user", "enable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
-    let start = manager.start_command().expect("systemd can start");
+    let prepare = manager
+        .prepare_start_command()
+        .expect("systemd should clear temporary masks before starting");
+    assert_eq!(
+        prepare.args(),
+        &["--user", "--runtime", "unmask", UNIXNOTIS_DAEMON_SERVICE]
+    );
+
+    let start = manager.start_command();
     assert_eq!(start.args(), &["--user", "start", UNIXNOTIS_DAEMON_SERVICE]);
 
-    let disable = manager
-        .disable_now_command()
-        .expect("systemd can disable and stop");
+    let disable = manager.disable_now_command();
     assert_eq!(
         disable.args(),
         &["--user", "disable", "--now", UNIXNOTIS_DAEMON_SERVICE]
     );
 
     // Reinstall should stop only UnixNotis and never broaden into user-session targets
-    let stop = manager
-        .stop_for_reinstall_command()
-        .expect("systemd can stop during reinstall");
+    let stop = manager.stop_for_reinstall_command();
     assert_eq!(stop.args(), &["--user", "stop", UNIXNOTIS_DAEMON_SERVICE]);
 }
 
@@ -117,6 +141,7 @@ fn hyprland_startup_lines_come_from_selected_backend() {
     assert_eq!(
         commands,
         vec![
+            "systemctl --user unset-environment DBUS_SESSION_BUS_ADDRESS".to_string(),
             "dbus-update-activation-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR".to_string(),
             "systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR".to_string(),
             format!("systemctl --user --no-block restart {UNIXNOTIS_DAEMON_SERVICE}"),
@@ -136,43 +161,44 @@ fn environment_sync_commands_come_from_selected_backend() {
         ),
     ];
 
-    // D-Bus sync runs first because systemd activation and DBus activation are separate stores
+    // Legacy bus state is removed before either graphical environment store is updated
     let with_dbus = manager.environment_sync_commands(&vars, true);
-    assert_eq!(with_dbus.len(), 2);
-    assert_eq!(with_dbus[0].program(), "dbus-update-activation-environment");
+    assert_eq!(with_dbus.len(), 3);
+    assert_eq!(with_dbus[0].program(), "systemctl");
     assert_eq!(
         with_dbus[0].args(),
-        &[
-            "WAYLAND_DISPLAY",
-            "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
-        ]
+        &["--user", "unset-environment", "DBUS_SESSION_BUS_ADDRESS"]
     );
-    assert_eq!(with_dbus[1].program(), "systemctl");
+    assert_eq!(with_dbus[1].program(), "dbus-update-activation-environment");
+    assert_eq!(with_dbus[1].args(), &["WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]);
+    assert_eq!(with_dbus[2].program(), "systemctl");
     assert_eq!(
-        with_dbus[1].args(),
+        with_dbus[2].args(),
         &[
             "--user",
             "--no-pager",
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 
     let without_dbus = manager.environment_sync_commands(&vars, false);
-    assert_eq!(without_dbus.len(), 1);
+    assert_eq!(without_dbus.len(), 2);
     assert_eq!(without_dbus[0].program(), "systemctl");
     assert_eq!(
         without_dbus[0].args(),
+        &["--user", "unset-environment", "DBUS_SESSION_BUS_ADDRESS"]
+    );
+    assert_eq!(without_dbus[1].program(), "systemctl");
+    assert_eq!(
+        without_dbus[1].args(),
         &[
             "--user",
             "--no-pager",
             "import-environment",
             "WAYLAND_DISPLAY",
             "XDG_RUNTIME_DIR",
-            "DBUS_SESSION_BUS_ADDRESS",
         ]
     );
 }

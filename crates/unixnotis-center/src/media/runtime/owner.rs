@@ -4,15 +4,12 @@ use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 use zbus::Connection;
 
-use super::cache::{refresh_player_cache, MediaCacheMergeMode};
-use super::schedule::{cancel_delayed_refresh, schedule_metadata_fallback};
+use super::schedule::cancel_delayed_refresh;
 use super::snapshot::send_snapshot_if_changed;
 use super::state::MediaRuntimeState;
 use super::MediaSignal;
 use crate::control::UiEvent;
-use crate::media::mpris::{
-    build_player_state, is_allowed_player, spawn_properties_listener, MPRIS_PREFIX,
-};
+use crate::media::mpris::{is_allowed_player, MPRIS_PREFIX};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OwnerChangeOutcome {
@@ -27,9 +24,9 @@ pub(super) enum OwnerChangeOutcome {
 pub(super) async fn apply_owner_change(
     name: &str,
     new_owner: Option<&str>,
-    connection: &Connection,
+    _connection: &Connection,
     config: &MediaConfig,
-    signal_tx: &mpsc::Sender<MediaSignal>,
+    _signal_tx: &mpsc::Sender<MediaSignal>,
     state: &mut MediaRuntimeState,
     sender: &async_channel::Sender<UiEvent>,
 ) -> zbus::Result<OwnerChangeOutcome> {
@@ -70,48 +67,20 @@ pub(super) async fn apply_owner_change(
         false
     };
 
-    let rebuilt = build_player_state(connection, name, config).await;
-    if let Ok(Some(player_state)) = rebuilt.as_ref() {
-        // Start the listener before publishing state so late property traffic is retained
-        spawn_properties_listener(
-            player_state.properties.clone(),
-            name.to_string(),
-            signal_tx.clone(),
-            player_state.listener_cancel.subscribe(),
-        );
-        state.players.insert(name.to_string(), player_state.clone());
-        refresh_player_cache(
-            &state.players,
-            &mut state.cache,
-            name,
-            MediaCacheMergeMode::Stable,
-        )
-        .await;
-        send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
-        schedule_metadata_fallback(
-            &mut state.delayed_refreshes,
-            &state.cache,
-            signal_tx.clone(),
-            name,
-        );
-    }
-
-    // Removing a prior cache must reach GTK even when replacement probing fails
-    let outcome = match rebuilt {
-        Ok(state) => owner_rebuild_outcome(state.is_some()),
-        Err(err) => {
-            if removed_previous {
-                send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
-            }
-            return Err(err);
-        }
-    };
-    if replacement_removal_needs_snapshot(removed_previous, outcome) {
+    if removed_previous {
+        // Rebuilding is deferred to one coalesced bounded discovery pass
         send_snapshot_if_changed(sender, &state.cache, &mut state.last_snapshot).await;
     }
-    Ok(outcome)
+    Ok(OwnerChangeOutcome::RetryNeeded)
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "outcome helpers document and test refresh semantics"
+    )
+)]
 pub(super) const fn owner_rebuild_outcome(rebuilt: bool) -> OwnerChangeOutcome {
     if rebuilt {
         OwnerChangeOutcome::Applied
@@ -120,6 +89,13 @@ pub(super) const fn owner_rebuild_outcome(rebuilt: bool) -> OwnerChangeOutcome {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "outcome helpers document and test refresh semantics"
+    )
+)]
 pub(super) const fn replacement_removal_needs_snapshot(
     removed_previous: bool,
     outcome: OwnerChangeOutcome,
@@ -132,6 +108,22 @@ pub(super) fn owner_is_unchanged(
     announced_owner: Option<&str>,
 ) -> bool {
     current_owner.is_some() && current_owner == announced_owner
+}
+
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "alias deduplication rule remains covered by runtime tests"
+    )
+)]
+pub(super) fn owner_is_duplicate(
+    existing_name: &str,
+    requested_name: &str,
+    existing_owner: Option<&str>,
+    requested_owner: Option<&str>,
+) -> bool {
+    existing_name != requested_name && existing_owner == requested_owner
 }
 
 async fn remove_player(

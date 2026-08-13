@@ -65,13 +65,12 @@ pub(super) fn write_fake_workspace(root: &std::path::Path, binaries: &[&str]) {
 }
 
 pub(super) fn test_context<'a>(
-    detection: &'a Detection,
+    _detection: &'a Detection,
     paths: &'a InstallPaths,
     action_mode: ActionMode,
 ) -> ActionContext<'a> {
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(32);
     ActionContext {
-        detection,
         paths,
         install_state: None,
         log_tx: tx,

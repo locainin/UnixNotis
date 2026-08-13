@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/unixnotis/Ui/icons">
+    <file alias="unixnotis-app-unknown-symbolic.svg" preprocess="xml-stripblanks">icons/unixnotis-app-unknown-symbolic.svg</file>
+    <file alias="unixnotis-shield-warning-symbolic.svg" preprocess="xml-stripblanks">icons/unixnotis-shield-warning-symbolic.svg</file>
+    <file alias="unixnotis-terminal-symbolic.svg" preprocess="xml-stripblanks">icons/unixnotis-terminal-symbolic.svg</file>
+    <file alias="unixnotis-system-symbolic.svg" preprocess="xml-stripblanks">icons/unixnotis-system-symbolic.svg</file>
+  </gresource>
+</gresources>

@@ -1,12 +1,20 @@
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
+use unixnotis_core::reconnect::BACKOFF_JITTER_MS;
+use unixnotis_core::CONTROL_BUS_NAME;
 use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
 use zbus::ConnectionBuilder;
 
+use super::{
+    owner_error_is_disconnected, probe_control_owner, wait_for_control_owner_with_probe,
+    GetOwnerError, OwnerWait,
+};
 use crate::test_support::broker::read_broker_address;
 
 static NEXT_BROKER: AtomicUsize = AtomicUsize::new(0);
@@ -160,4 +168,111 @@ fn broker_socket_is_scoped_to_a_unique_temporary_directory() {
     assert_eq!(first.file_name(), Some(std::ffi::OsStr::new("bus.sock")));
     let _ = std::fs::remove_dir_all(first.parent().expect("temporary socket has a parent"));
     let _ = std::fs::remove_dir_all(second.parent().expect("temporary socket has a parent"));
+}
+
+#[test]
+fn transient_initial_owner_probe_retries_without_an_owner_change_signal() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    runtime.block_on(async {
+        let attempts = std::sync::Arc::new(AtomicUsize::new(0));
+        let mut owner_changes =
+            futures_util::stream::pending::<Option<zbus::names::UniqueName<'static>>>();
+        let (event_tx, event_rx) = async_channel::bounded(4);
+        let (_command_tx, mut command_rx) = tokio::sync::mpsc::channel(1);
+        let mut offline_commands = std::collections::VecDeque::new();
+        // The deadline covers the production jitter ceiling plus scheduler headroom
+        let outcome = tokio::time::timeout(
+            Duration::from_millis(BACKOFF_JITTER_MS + 100),
+            wait_for_control_owner_with_probe(
+                {
+                    let attempts = attempts.clone();
+                    move || {
+                        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                        async move {
+                            if attempt == 0 {
+                                Err(GetOwnerError::Transient("injected timeout".to_string()))
+                            } else {
+                                Ok(":1.42".to_string())
+                            }
+                        }
+                    }
+                },
+                &mut owner_changes,
+                &event_tx,
+                &mut command_rx,
+                &mut offline_commands,
+                1,
+            ),
+        )
+        .await
+        .expect("owner retry should finish without a signal");
+
+        assert_eq!(outcome, OwnerWait::Ready(":1.42".to_string()));
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(super::UiEvent::Disconnected)
+        ));
+        assert!(event_rx.try_recv().is_err());
+    });
+}
+
+#[test]
+fn owner_probe_returns_the_live_control_service_unique_name() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    runtime.block_on(async {
+        let broker = PrivateBroker::start(broker_socket());
+        let service = connect(&broker.address).await.expect("connect service");
+        service
+            .request_name(CONTROL_BUS_NAME)
+            .await
+            .expect("claim control service name");
+        let observer = connect(&broker.address).await.expect("connect observer");
+        let dbus = DBusProxy::new(&observer).await.expect("create D-Bus proxy");
+        let control_name = BusName::try_from(CONTROL_BUS_NAME).expect("valid control bus name");
+
+        // The probe must return the unique owner instead of the requested well-known name
+        let owner = probe_control_owner(&dbus, control_name)
+            .await
+            .expect("probe live control owner");
+
+        assert_eq!(
+            owner,
+            service
+                .unique_name()
+                .expect("service connection has a unique name")
+                .to_string()
+        );
+    });
+}
+
+#[test]
+fn owner_lookup_errors_distinguish_connection_loss_from_transient_failures() {
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::IOError(
+        "broken socket".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::NoServer(
+        "missing broker".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::NoNetwork(
+        "network unavailable".to_string()
+    )));
+    assert!(owner_error_is_disconnected(&zbus::fdo::Error::ZBus(
+        zbus::Error::InputOutput(Arc::new(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "broker closed",
+        )))
+    )));
+    assert!(!owner_error_is_disconnected(&zbus::fdo::Error::Timeout(
+        "slow broker".to_string()
+    )));
+    assert!(!owner_error_is_disconnected(
+        &zbus::fdo::Error::NameHasNoOwner("service absent".to_string())
+    ));
 }

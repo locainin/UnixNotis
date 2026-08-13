@@ -6,7 +6,7 @@ use crate::service_manager::ServiceManager;
 
 use super::flow_support::{
     assert_call_order, flow_env, flow_paths, lock_env, read_calls, run_install_and_enable,
-    service_flow_root, write_fake_tools, FakeToolMode,
+    service_flow_root, standard_bus_address, write_fake_tools, FakeToolMode,
 };
 
 #[test]
@@ -38,8 +38,10 @@ fn systemd_install_flow_runs_reload_env_import_and_enable() {
         &calls,
         &[
             "program=systemctl argv=[--user][daemon-reload]",
+            "program=systemctl argv=[--user][unset-environment][DBUS_SESSION_BUS_ADDRESS]",
             "program=dbus-update-activation-environment argv=[WAYLAND_DISPLAY]",
             "program=systemctl argv=[--user][--no-pager][import-environment][WAYLAND_DISPLAY]",
+            "program=systemctl argv=[--user][--runtime][unmask][unixnotis-daemon.service]",
             "program=systemctl argv=[--user][enable][--now][unixnotis-daemon.service]",
         ],
     );
@@ -108,7 +110,7 @@ fn runit_install_flow_syncs_envdir_before_removing_down_and_starting() {
     assert_eq!(
         fs::read_to_string(service_dir.join("env").join("DBUS_SESSION_BUS_ADDRESS"))
             .expect("runit D-Bus address should be persisted"),
-        "unix:path=/tmp/unixnotis-bus\n"
+        format!("{}\n", standard_bus_address())
     );
     assert!(
         fs::symlink_metadata(service_dir.join("down")).is_err(),
@@ -160,7 +162,7 @@ fn s6_install_flow_compiles_database_then_changes_service() {
                 .join("DBUS_SESSION_BUS_ADDRESS")
         )
         .expect("s6 D-Bus address should be persisted"),
-        "unix:path=/tmp/unixnotis-bus\n"
+        format!("{}\n", standard_bus_address())
     );
     let calls = read_calls(&log_path);
     assert_call_order(

@@ -3,17 +3,23 @@
 use gtk::prelude::*;
 use unixnotis_core::css::hooks;
 
-pub(super) struct ReloadNoticeWidgets {
-    pub(super) revealer: gtk::Revealer,
-    pub(super) shell: gtk::Box,
-    pub(super) label: gtk::Label,
+pub(super) const RELOAD_NOTICE_TRANSITION_MS: u32 = 160;
+
+pub(in crate::ui) struct ReloadNoticeWidgets {
+    pub(in crate::ui) revealer: gtk::Revealer,
+    pub(in crate::ui) shell: gtk::Box,
+    pub(in crate::ui) label: gtk::Label,
+    pub(in crate::ui) close: gtk::Button,
 }
 
-pub(super) fn build_reload_notice() -> ReloadNoticeWidgets {
-    // Horizontal layout keeps the message and dismissal action on one row
-    let shell = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+pub(in crate::ui) fn build_reload_notice() -> ReloadNoticeWidgets {
+    // The outer column keeps the status message independent from the panel contents
+    let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shell.add_css_class(hooks::panel_shell::RELOAD_NOTICE);
     shell.set_hexpand(true);
+
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    content.add_css_class(hooks::panel_shell::RELOAD_NOTICE_CONTENT);
 
     // Wrapping prevents long parser errors from changing panel width
     let label = gtk::Label::new(None);
@@ -29,13 +35,14 @@ pub(super) fn build_reload_notice() -> ReloadNoticeWidgets {
     close.set_tooltip_text(Some("Dismiss reload notice"));
     close.set_valign(gtk::Align::Start);
 
-    shell.append(&label);
-    shell.append(&close);
+    content.append(&label);
+    content.append(&close);
+    shell.append(&content);
 
     // A short vertical transition keeps the header position stable
     let revealer = gtk::Revealer::new();
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    revealer.set_transition_duration(160);
+    revealer.set_transition_duration(RELOAD_NOTICE_TRANSITION_MS);
     revealer.set_reveal_child(false);
     revealer.set_child(Some(&shell));
 
@@ -46,6 +53,7 @@ pub(super) fn build_reload_notice() -> ReloadNoticeWidgets {
         revealer,
         shell,
         label,
+        close,
     }
 }
 

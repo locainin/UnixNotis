@@ -39,7 +39,9 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
             "Current owner: ",
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::raw(crate::actions::summarize_owner(&app.detection.owner)),
+        Span::raw(crate::actions::summarize_owner(
+            app.detection.owner.as_ref(),
+        )),
     ]));
 
     // Blocked state is rendered inline so it is visible before execution
@@ -120,6 +122,10 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
         layout[1],
     );
 
+    render_confirmation_footer(frame, layout[2]);
+}
+
+fn render_confirmation_footer(frame: &mut Frame<'_>, area: ratatui::layout::Rect) {
     let footer = Paragraph::new(Text::from(Line::from(vec![
         Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" = proceed  "),
@@ -128,5 +134,5 @@ pub(super) fn draw_confirm(frame: &mut Frame<'_>, app: &App, mode: ActionMode) {
     ])))
     .alignment(ratatui::layout::Alignment::Center)
     .block(Block::default().borders(Borders::TOP));
-    frame.render_widget(footer, layout[2]);
+    frame.render_widget(footer, area);
 }

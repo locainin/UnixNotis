@@ -10,8 +10,6 @@
     clippy::option_if_let_else,
     clippy::ref_option,
     clippy::significant_drop_tightening,
-    clippy::struct_excessive_bools,
-    clippy::struct_field_names,
     clippy::trivially_copy_pass_by_ref,
     clippy::unnecessary_wraps,
     clippy::unused_async,
@@ -27,7 +25,7 @@ use tracing::info;
 mod child_process;
 mod cli;
 mod daemon;
-mod dbus_owner;
+mod dnd_expiration;
 mod expire;
 mod runtime;
 mod sound;
@@ -73,5 +71,5 @@ async fn main() -> Result<()> {
     ensure_wayland_session(Duration::from_secs(20))
         .await
         .context("wait for Wayland session")?;
-    runtime::run(&args, config).await
+    Box::pin(runtime::run(&args, config)).await
 }

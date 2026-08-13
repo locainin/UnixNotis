@@ -69,43 +69,53 @@ fn runit_backend_commands_match_expected_behavior() {
     let manager = ServiceManager::runit_user(PathBuf::from("/tmp/service"));
     let service_path = "/tmp/service/unixnotis-daemon";
 
-    let availability = manager
-        .availability_command()
-        .expect("runit checks sv availability");
-    assert_eq!(availability.program(), "sv");
-    assert_eq!(availability.args(), &["-V"]);
-
     // A watched service directory is the enablement source, not an sv query
     assert!(manager.is_enabled_command().is_none());
     assert!(manager.refresh_after_artifact_change().is_none());
 
     // sv check tracks the requested state, so active status must parse sv status output
-    let active = manager
-        .active_probe()
-        .expect("runit can parse current status");
+    let active = manager.active_probe();
     assert_eq!(active.command().args(), &["status", service_path]);
     assert_eq!(
-        active.parser_matches("run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
-        Some(true)
+        active.parser_state(true, "run: /tmp/service/unixnotis-daemon: (pid 123) 2s"),
+        crate::service_manager::contract::ServiceProbeState::Active
     );
     assert_eq!(
-        active.parser_matches("down: /tmp/service/unixnotis-daemon: 1s"),
-        Some(false)
+        active.parser_state(true, "down: /tmp/service/unixnotis-daemon: 1s"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "fail: /tmp/service/unixnotis-daemon: runsv not running\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "fail: /tmp/service/unixnotis-daemon: unable to change to service directory: No such file or directory\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state_with_result(
+            Some(1),
+            "timeout: down: /tmp/service/unixnotis-daemon: 30s\n",
+            ""
+        ),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
     );
 
-    let enable = manager
-        .enable_now_command()
-        .expect("runit starts watched service directories");
+    let enable = manager.enable_now_command();
     assert_eq!(enable.args(), &["start", service_path]);
 
-    let disable = manager
-        .disable_now_command()
-        .expect("runit stops watched service directories");
+    let disable = manager.disable_now_command();
     assert_eq!(disable.args(), &["stop", service_path]);
 
-    let stop = manager
-        .stop_for_reinstall_command()
-        .expect("runit can stop before reinstall");
+    let stop = manager.stop_for_reinstall_command();
     assert_eq!(stop.args(), &["stop", service_path]);
 }
 
@@ -243,22 +253,11 @@ fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     let commands = manager.hyprland_startup_commands(&vars);
 
     assert_eq!(commands.len(), 1);
-    assert!(commands[0].starts_with("sh -lc "));
-    assert!(!commands[0].contains('\n'));
-    assert!(commands[0].contains("umask 077"));
-    assert!(commands[0].contains("[ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("mkdir -p \"$envdir\" || exit 1"));
-    assert!(commands[0].contains("[ -d \"$envdir\" ] && [ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("/tmp/service root/unixnotis-daemon/env"));
-    assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
-    assert!(commands[0].contains("printenv WAYLAND_DISPLAY > \"$tmp\" || : > \"$tmp\""));
-    assert!(commands[0].contains("chmod 600 \"$tmp\""));
-    assert!(commands[0].contains("mv -f \"$tmp\" \"$envdir/WAYLAND_DISPLAY\""));
-    assert!(commands[0].contains("\"$envdir/WAYLAND_DISPLAY\""));
-    assert!(!commands[0].contains(".PATH.XXXXXX"));
-    assert!(!commands[0].contains("$envdir/PATH"));
-    assert!(commands[0].contains("sv restart"));
-    assert!(commands[0].contains("|| sv start"));
+    assert_eq!(
+        commands[0],
+        "noticenterctl sync-session-environment --service-manager runit"
+    );
+    assert!(!commands[0].contains("sh -lc"));
 }
 
 #[test]
@@ -288,7 +287,7 @@ fn runit_readiness_rejects_chpst_that_exists_only_on_path() {
     let trusted_bin = root.join("trusted-bin");
     fs::create_dir_all(&path_bin).expect("path bin");
     fs::create_dir_all(&trusted_bin).expect("trusted bin");
-    write_executable(path_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
+    write_executable(&path_bin.join("chpst"), "#!/bin/sh\nexit 0\n");
     let _path = EnvPathGuard::prepend(&path_bin);
     let _tools = use_fake_tool_bin(&trusted_bin);
 
@@ -307,8 +306,8 @@ fn test_root(name: &str) -> PathBuf {
     root
 }
 
-fn write_executable(path: PathBuf, contents: &str) {
-    write_test_executable(&path, contents);
+fn write_executable(path: &Path, contents: &str) {
+    write_test_executable(path, contents);
 }
 
 struct EnvPathGuard {

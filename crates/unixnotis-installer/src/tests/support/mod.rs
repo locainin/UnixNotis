@@ -1,13 +1,13 @@
 //! Shared installer test helpers for environment and filesystem fixtures
 
+use unixnotis_core::CURRENT_CONFIG_VERSION;
+
 pub mod env;
 pub mod fs;
+mod paths;
 
-impl crate::paths::InstallPaths {
-    pub(crate) fn discover() -> anyhow::Result<Self> {
-        // Test callers use the same automatic manager selection as the normal CLI
-        Self::discover_with_service_manager(None)
-    }
+pub fn current_config_text(contents: &str) -> String {
+    format!("config_version = {CURRENT_CONFIG_VERSION}\n{contents}")
 }
 
 #[cfg(test)]

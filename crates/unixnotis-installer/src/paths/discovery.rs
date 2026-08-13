@@ -75,6 +75,30 @@ impl InstallPaths {
     pub fn release_binary_dir(&self) -> PathBuf {
         self.repo_root.join(RELEASE_BIN_DIR)
     }
+
+    pub fn installed_release_root(&self) -> Result<PathBuf> {
+        let local_root = self
+            .bin_dir
+            .parent()
+            .ok_or_else(|| anyhow!("binary directory has no local installation root"))?;
+        Ok(local_root.join("lib").join("unixnotis"))
+    }
+
+    pub fn installed_releases_dir(&self) -> Result<PathBuf> {
+        Ok(self.installed_release_root()?.join("releases"))
+    }
+
+    pub fn installed_current_link(&self) -> Result<PathBuf> {
+        Ok(self.installed_release_root()?.join("current"))
+    }
+
+    pub fn installed_pending_manifest(&self) -> Result<PathBuf> {
+        Ok(self.installed_release_root()?.join("pending-install.json"))
+    }
+
+    pub fn installed_rollback_root(&self) -> Result<PathBuf> {
+        Ok(self.installed_release_root()?.join("rollback"))
+    }
 }
 
 fn service_manager_from_selection(

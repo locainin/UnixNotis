@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use super::super::{Args, Command, DoctorServiceManagerArg, PresetCommand};
+use super::super::{Args, Command, DoctorServiceManagerArg, PresetCommand, ThemeCommand};
 
 #[test]
 fn local_only_classification_distinguishes_local_and_control_commands() {
@@ -16,6 +16,10 @@ fn local_only_classification_distinguishes_local_and_control_commands() {
         command: PresetCommand::Inspect {
             input: "bundle.unixnotis".to_string()
         }
+    }
+    .is_local_only());
+    assert!(Command::Theme {
+        command: ThemeCommand::ExportStock { output: None }
     }
     .is_local_only());
 
@@ -39,6 +43,10 @@ fn synchronous_classification_builds_a_runtime_only_when_needed() {
         }
     }
     .is_synchronous());
+    assert!(Command::Theme {
+        command: ThemeCommand::ExportStock { output: None }
+    }
+    .is_synchronous());
 
     assert!(!Command::Doctor {
         json: false,
@@ -48,4 +56,24 @@ fn synchronous_classification_builds_a_runtime_only_when_needed() {
     }
     .is_synchronous());
     assert!(!Command::ClearActive.is_synchronous());
+}
+
+#[test]
+fn theme_export_stock_is_local_and_accepts_an_optional_directory() {
+    let args = Args::try_parse_from([
+        "noticenterctl",
+        "theme",
+        "export-stock",
+        "--output",
+        "editable-theme",
+    ])
+    .expect("theme export arguments should parse");
+
+    let Command::Theme {
+        command: ThemeCommand::ExportStock { output },
+    } = args.command
+    else {
+        panic!("theme export command should be selected");
+    };
+    assert_eq!(output, Some("editable-theme".into()));
 }

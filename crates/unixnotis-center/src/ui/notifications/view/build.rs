@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::control::{UiCommand, UiEvent};
 
 use super::item::RowKind;
-use super::row::empty::{build_empty_row, update_empty_row};
+use super::row::empty::build_empty_row;
 use super::types::{NotificationList, NotificationListConfig};
 use super::widgets::{bind_row, ensure_row_widgets, get_row_widgets, set_row_widgets, RowWidgets};
 use crate::ui::icons::IconResolver;
@@ -53,7 +53,10 @@ impl NotificationList {
 
         let command_tx_clone = command_tx.clone();
         let event_tx_clone = event_tx.clone();
-        factory.connect_setup(move |_, gtk_item| {
+        factory.connect_setup(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             let widgets = RowWidgets::new(
                 RowKind::Notification,
                 command_tx_clone.clone(),
@@ -64,8 +67,11 @@ impl NotificationList {
 
         let command_tx_clone = command_tx;
         let event_tx_clone = event_tx;
-        let icon_resolver_clone = icon_resolver;
-        factory.connect_bind(move |_, gtk_item| {
+        let icon_resolver_for_bind = icon_resolver.clone();
+        factory.connect_bind(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             let Some(row_item) = gtk_item.item().and_downcast::<super::item::RowItem>() else {
                 return;
             };
@@ -77,12 +83,16 @@ impl NotificationList {
                 event_tx_clone.clone(),
             );
 
-            bind_row(widgets, &row_item, &data, icon_resolver_clone.clone());
+            bind_row(widgets, &row_item, &data, icon_resolver_for_bind.clone());
         });
 
-        factory.connect_unbind(move |_, gtk_item| {
+        let icon_resolver_for_unbind = icon_resolver;
+        factory.connect_unbind(move |_, item| {
+            let Some(gtk_item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
             if let Some(widgets) = get_row_widgets(gtk_item) {
-                widgets.unbind();
+                widgets.unbind(&icon_resolver_for_unbind);
             }
             // Keep RowWidgets attached so GTK can recycle rows without rebuilding
             // the widget tree on every scroll. Kind mismatches are handled in
@@ -95,6 +105,7 @@ impl NotificationList {
             empty_offset_top: config.empty_offset_top,
             empty_alignment: config.empty_alignment,
             empty_text: config.empty_text,
+            no_matching_text: config.no_matching_text,
             entries: std::collections::HashMap::new(),
             active_order: std::collections::VecDeque::new(),
             history_order: std::collections::VecDeque::new(),
@@ -116,7 +127,11 @@ impl NotificationList {
             filter_query: None,
             transient_to_history: config.transient_to_history,
             show_notification_metadata: config.show_notification_metadata,
+            notification_metadata: Rc::new(config.notification_metadata),
+            notification_corners: config.notification_corners,
             show_notification_thumbnails: config.show_notification_thumbnails,
+            show_notification_avatars: config.show_notification_avatars,
+            reduced_motion: config.reduced_motion,
             max_active: config.max_active,
             max_entries: config.max_entries,
         }
@@ -127,13 +142,27 @@ impl NotificationList {
         self.transient_to_history = config.transient_to_history;
         let presentation_changed = self.show_notification_metadata
             != config.show_notification_metadata
-            || self.show_notification_thumbnails != config.show_notification_thumbnails;
+            || self.notification_metadata.as_ref() != &config.notification_metadata
+            || self.notification_corners != config.notification_corners
+            || self.show_notification_thumbnails != config.show_notification_thumbnails
+            || self.show_notification_avatars != config.show_notification_avatars
+            || self.reduced_motion != config.reduced_motion;
         self.show_notification_metadata = config.show_notification_metadata;
+        if self.notification_metadata.as_ref() != &config.notification_metadata {
+            self.notification_metadata = Rc::new(config.notification_metadata.clone());
+        }
+        self.notification_corners = config.notification_corners;
         self.show_notification_thumbnails = config.show_notification_thumbnails;
+        self.show_notification_avatars = config.show_notification_avatars;
+        self.reduced_motion = config.reduced_motion;
         if self.empty_text != config.empty_text {
-            update_empty_row(&self.empty_overlay, &config.empty_text);
             self.empty_text = config.empty_text.clone();
         }
+        if self.no_matching_text != config.no_matching_text {
+            self.no_matching_text = config.no_matching_text.clone();
+        }
+        // The visible copy depends on both configuration and current search state
+        self.update_empty_overlay();
         if self.empty_offset_top != config.empty_offset_top {
             self.empty_offset_top = config.empty_offset_top;
         }
@@ -141,6 +170,7 @@ impl NotificationList {
         self.apply_limits(config.max_active, config.max_entries);
         if presentation_changed {
             // Existing rows need fresh RowData so optional lanes hide or show immediately
+            self.dirty_groups.extend(self.grouped_cache.keys().cloned());
             self.request_rebuild();
         }
     }

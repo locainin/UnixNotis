@@ -2,23 +2,27 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::Utc;
-use unixnotis_core::{CloseReason, Config, Notification, NotificationImage, Urgency};
+use unixnotis_core::{CloseReason, Notification, NotificationImage, Urgency};
 use zbus::zvariant::OwnedValue;
 use zbus::Message;
 
 use super::super::ControlServer;
 use crate::expire::{ExpirationCommand, ExpirationScheduler};
-use crate::store::NotificationStore;
-use crate::test_support::{daemon_state_for_test, TempRoot};
+use crate::test_support::{daemon_state_for_test, daemon_state_for_test_with_owner};
 
 fn notification(summary: &str) -> Notification {
     Notification {
         id: 0,
+        generation: 0,
         app_name: "TestApp".to_string(),
         app_icon: String::new(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
         summary: summary.to_string(),
         body: String::new(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         hints: HashMap::<String, OwnedValue>::new(),
         urgency: Urgency::Normal,
         category: None,
@@ -55,7 +59,7 @@ async fn next_cancel_id(
         .expect("cancel command should arrive")
         .expect("scheduler channel should stay open");
     match command {
-        ExpirationCommand::Cancel { id } => id,
+        ExpirationCommand::Cancel { id, .. } => id,
         ExpirationCommand::Schedule { .. } => panic!("clear should cancel expiration"),
     }
 }
@@ -66,18 +70,24 @@ async fn drain_active_notifications_returns_ids_and_cancels_expirations() {
     let (scheduler, mut receiver) = ExpirationScheduler::channel_for_test();
     state.set_scheduler(scheduler);
     let server = ControlServer::new(state.clone());
-    let ids = {
+    let keys = {
         let mut store = state.store.lock().await;
-        let first = store.insert(notification("first"), 0).notification.id;
-        let second = store.insert(notification("second"), 0).notification.id;
+        let first = store
+            .insert(notification("first"), 0)
+            .active_notification()
+            .key();
+        let second = store
+            .insert(notification("second"), 0)
+            .active_notification()
+            .key();
         vec![second, first]
     };
 
     let drained = server.drain_active_notifications().await;
 
-    assert_eq!(drained, ids);
-    assert_eq!(next_cancel_id(&mut receiver).await, ids[0]);
-    assert_eq!(next_cancel_id(&mut receiver).await, ids[1]);
+    assert_eq!(drained, keys);
+    assert_eq!(next_cancel_id(&mut receiver).await, keys[0].id);
+    assert_eq!(next_cancel_id(&mut receiver).await, keys[1].id);
     assert!(state.store.lock().await.list_active().is_empty());
 }
 
@@ -87,7 +97,10 @@ async fn clear_saved_history_removes_archived_notifications() {
     let server = ControlServer::new(state.clone());
     let id = {
         let mut store = state.store.lock().await;
-        let id = store.insert(notification("history"), 0).notification.id;
+        let id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(id, CloseReason::Undefined);
         id
     };
@@ -111,47 +124,19 @@ async fn clear_saved_history_removes_archived_notifications() {
 }
 
 #[tokio::test]
-async fn apply_dnd_state_rolls_back_when_persistence_fails() {
+async fn panel_command_availability_fails_after_ready_owner_disconnects() {
     let state = daemon_state_for_test(false).await;
-    let root = TempRoot::new("dnd-persist-failure");
-    let state_dir = root.join("state");
-    std::fs::create_dir_all(&state_dir).expect("create state dir");
-    std::fs::write(state_dir.join("unixnotis"), "not a directory").expect("block dnd parent");
-    {
-        let mut store = state.store.lock().await;
-        *store = NotificationStore::new_with_state_dir(Config::default(), state_dir);
-    }
+    state.set_center_process_running(true);
+    state.set_panel_ready(":1.20", true);
     let server = ControlServer::new(state.clone());
+    assert!(server.ensure_panel_available().is_ok());
+
+    state.remove_disconnected_client(":1.20").await;
 
     let error = server
-        .apply_dnd_state(true)
-        .await
-        .expect_err("persistence failure should be reported");
-
-    assert!(error.to_string().contains("failed to persist"));
-    assert!(!state.store.lock().await.dnd_enabled());
-}
-
-#[tokio::test]
-async fn apply_toggle_dnd_persists_successful_state_change() {
-    let state = daemon_state_for_test(false).await;
-    let root = TempRoot::new("dnd-toggle-success");
-    let state_dir = root.join("state");
-    {
-        let mut store = state.store.lock().await;
-        *store = NotificationStore::new_with_state_dir(Config::default(), state_dir.clone());
-    }
-    let server = ControlServer::new(state.clone());
-
-    server
-        .apply_toggle_dnd()
-        .await
-        .expect("toggle should persist");
-
-    assert!(state.store.lock().await.dnd_enabled());
-    let persisted = std::fs::read_to_string(state_dir.join("unixnotis").join("state.json"))
-        .expect("read persisted dnd state");
-    assert!(persisted.contains("\"dnd_enabled\":true"));
+        .ensure_panel_available()
+        .expect_err("panel command should fail without a ready center owner");
+    assert!(error.to_string().contains("unavailable"));
 }
 
 #[tokio::test]
@@ -170,6 +155,56 @@ async fn clear_all_rejects_unauthorized_sender_before_mutating_state() {
         .expect_err("unauthorized clear all should fail");
 
     assert_eq!(state.store.lock().await.list_active().len(), 1);
+}
+
+#[tokio::test]
+async fn authorized_snapshot_is_one_store_consistent_read() {
+    let state = daemon_state_for_test_with_owner(false, Some(":1.4242")).await;
+    let server = ControlServer::new(state.clone());
+    {
+        let mut store = state.store.lock().await;
+        store.insert(notification("active"), 0);
+        let history_id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
+        store.close(history_id, CloseReason::Undefined);
+    }
+
+    let message = control_header_message("GetSnapshot");
+    let snapshot = server
+        .get_snapshot(message.header())
+        .await
+        .expect("pre-authorized control owner can read a snapshot");
+
+    assert_eq!(snapshot.active.len(), 1);
+    assert_eq!(snapshot.history.len(), 1);
+    assert_eq!(snapshot.state.history_count, 1);
+}
+
+#[tokio::test]
+async fn authorized_clear_all_removes_active_and_history_together() {
+    let state = daemon_state_for_test_with_owner(false, Some(":1.4242")).await;
+    let server = ControlServer::new(state.clone());
+    {
+        let mut store = state.store.lock().await;
+        store.insert(notification("active"), 0);
+        let history_id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
+        store.close(history_id, CloseReason::Undefined);
+    }
+
+    let message = control_header_message("ClearAll");
+    server
+        .clear_all(message.header())
+        .await
+        .expect("pre-authorized control owner can clear all");
+
+    let store = state.store.lock().await;
+    assert!(store.list_active().is_empty());
+    assert!(store.list_history().is_empty());
 }
 
 #[tokio::test]
@@ -196,7 +231,10 @@ async fn clear_history_rejects_unauthorized_sender_before_mutating_state() {
     let server = ControlServer::new(state.clone());
     let id = {
         let mut store = state.store.lock().await;
-        let id = store.insert(notification("history"), 0).notification.id;
+        let id = store
+            .insert(notification("history"), 0)
+            .active_notification()
+            .id;
         store.close(id, CloseReason::Undefined);
         id
     };
@@ -217,13 +255,104 @@ async fn clear_history_rejects_unauthorized_sender_before_mutating_state() {
 }
 
 #[tokio::test]
-async fn invoke_action_rejects_unauthorized_sender_before_signal_emit() {
+async fn generation_dismiss_rejects_unauthorized_sender_before_mutating_state() {
     let state = daemon_state_for_test(false).await;
-    let server = ControlServer::new(state);
-    let message = control_header_message("InvokeAction");
+    let key = state
+        .store
+        .lock()
+        .await
+        .insert(notification("protected generation"), 0)
+        .active_notification()
+        .key();
+    let server = ControlServer::new(state.clone());
+    let message = control_header_message("DismissGeneration");
 
     server
-        .invoke_action(7, "default", message.header())
+        .dismiss_generation(key.id, key.generation, message.header())
         .await
-        .expect_err("unauthorized action should fail");
+        .expect_err("unauthorized generation dismiss should fail");
+
+    assert_eq!(
+        state
+            .store
+            .lock()
+            .await
+            .active_notification_view(key.id)
+            .expect("unauthorized dismiss must preserve the notification")
+            .key(),
+        key
+    );
+}
+
+#[tokio::test]
+async fn generation_action_rejects_unauthorized_sender_before_validation() {
+    let state = daemon_state_for_test(false).await;
+    let server = ControlServer::new(state);
+    let message = control_header_message("InvokeActionGeneration");
+
+    server
+        .invoke_action_generation(7, 11, "default", false, message.header())
+        .await
+        .expect_err("unauthorized generation action should fail");
+}
+
+#[tokio::test]
+async fn popup_render_acknowledgement_rejects_unauthorized_sender() {
+    let state = daemon_state_for_test(false).await;
+    let key = state
+        .store
+        .lock()
+        .await
+        .insert(notification("render acknowledgement"), 0)
+        .active_notification()
+        .key();
+    let server = ControlServer::new(state.clone());
+    let message = control_header_message("MarkPopupVisible");
+
+    server
+        .mark_popup_generation_stage(
+            key,
+            unixnotis_core::PopupDeliveryStage::Visible,
+            "MarkPopupVisible",
+            &message.header(),
+        )
+        .await
+        .expect_err("unauthorized visibility acknowledgement should fail");
+
+    assert_ne!(
+        state
+            .store
+            .lock()
+            .await
+            .notification_diagnostics(key.id, &unixnotis_core::UiHealth::default())
+            .expect("notification diagnostics should remain available")
+            .delivery_stage,
+        unixnotis_core::PopupDeliveryStage::Visible
+    );
+}
+
+#[tokio::test]
+async fn timed_dnd_rejects_unauthorized_sender_before_mutating_state() {
+    let state = daemon_state_for_test(false).await;
+    let server = ControlServer::new(state.clone());
+    let message = control_header_message("SetDndUntil");
+
+    server
+        .set_dnd_until(Utc::now().timestamp() + 600, message.header())
+        .await
+        .expect_err("unauthorized timed DND should fail");
+
+    assert!(!state.store.lock().await.dnd_enabled());
+}
+
+#[tokio::test]
+async fn inline_reply_rejects_unauthorized_sender_before_live_state_lookup() {
+    let state = daemon_state_for_test(false).await;
+    let server = ControlServer::new(state);
+    let message = control_header_message("ReplyNotification");
+
+    server
+        .reply_notification(7, 1, "private text", message.header())
+        .await
+        .expect_err("unauthorized inline reply should fail");
 }

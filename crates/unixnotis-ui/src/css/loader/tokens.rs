@@ -25,5 +25,5 @@ pub(super) fn ensure_base_tokens(contents: &str, path: &Path) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/tokens.rs"]
+#[path = "tests/tokens.rs"]
 mod tests;

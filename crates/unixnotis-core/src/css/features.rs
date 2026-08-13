@@ -1,25 +1,18 @@
 //! Shared GTK CSS capability checks
 
-pub const GTK_CSS_CUSTOM_PROPERTIES_MIN_VERSION_LABEL: &str = "GTK 4.16+";
+pub const GTK_MIN_VERSION_LABEL: &str = "GTK 4.18+";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GtkCssFeatures {
-    // Newer GTK builds can expand var() and custom properties
+    // The installer uses this capability to enforce the supported baseline
     pub custom_properties: bool,
-}
-
-impl GtkCssFeatures {
-    #[must_use]
-    pub const fn supports_modern_theme_tokens(self) -> bool {
-        self.custom_properties
-    }
 }
 
 #[must_use]
 pub const fn gtk_css_features_for_version(major: u32, minor: u32) -> GtkCssFeatures {
-    // GTK 4.16 added custom properties and var()
+    // GTK 4.18 is the common baseline for CSS variables and popup Wayland APIs
     GtkCssFeatures {
-        custom_properties: major > 4 || (major == 4 && minor >= 16),
+        custom_properties: major > 4 || (major == 4 && minor >= 18),
     }
 }
 
@@ -38,7 +31,7 @@ fn parse_major_minor(version: &str) -> Option<(u32, u32)> {
 }
 
 fn parse_version_part(part: &str) -> Option<u32> {
-    // Stop at the first non-digit so values like 4.16.0-2 still parse cleanly
+    // Stop at the first non-digit so values like 4.18.0-2 still parse cleanly
     let digits = part
         .trim()
         .chars()

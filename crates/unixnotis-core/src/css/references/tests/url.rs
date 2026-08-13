@@ -1,4 +1,4 @@
-use super::super::url::parse_url_value;
+use super::super::url::{parse_url_value, valid_url_value_range};
 use super::super::{collect_css_url_spans, collect_css_url_values};
 
 #[test]
@@ -87,4 +87,51 @@ fn invalid_unquoted_delimiters_and_controls_are_marked_ambiguous() {
         assert_eq!(values.len(), 1);
         assert!(values[0].ambiguous, "{css:?} should be ambiguous");
     }
+}
+
+#[test]
+fn unicode_whitespace_in_unquoted_urls_preserves_utf8_aligned_ranges() {
+    let unicode_whitespace = [
+        '\u{0085}', '\u{00A0}', '\u{1680}', '\u{2000}', '\u{2001}', '\u{2002}', '\u{2003}',
+        '\u{2004}', '\u{2005}', '\u{2006}', '\u{2007}', '\u{2008}', '\u{2009}', '\u{200A}',
+        '\u{2028}', '\u{2029}', '\u{202F}', '\u{205F}', '\u{3000}',
+    ];
+
+    for whitespace in unicode_whitespace {
+        for value in [
+            format!("{whitespace}asset.png"),
+            format!("asset.png{whitespace}"),
+            format!("{whitespace}asset.png{whitespace}"),
+        ] {
+            let css = format!("url({value})");
+            let spans = collect_css_url_spans(&css).expect("scan Unicode URL whitespace");
+            let span = spans.first().expect("one URL span");
+
+            assert_eq!(span.value, value);
+            assert!(css.is_char_boundary(span.value_start));
+            assert!(css.is_char_boundary(span.value_end));
+            assert_eq!(&css[span.value_start..span.value_end], value);
+        }
+    }
+}
+
+#[test]
+fn unquoted_url_trims_only_css_whitespace_bytes() {
+    let css = "url(\t\n\u{000c}\r asset.png \t\n\u{000c}\r) url(\u{000b}asset.png\u{000b})";
+    let spans = collect_css_url_spans(css).expect("scan exact CSS whitespace");
+
+    assert_eq!(spans[0].value, "asset.png");
+    assert_eq!(spans[1].value, "\u{000b}asset.png\u{000b}");
+    assert!(spans[1].ambiguous);
+}
+
+#[test]
+fn url_value_ranges_require_ordered_utf8_boundaries() {
+    let value = "aéz";
+
+    assert!(valid_url_value_range(value, 0, value.len()));
+    assert!(valid_url_value_range(value, 1, 3));
+    assert!(!valid_url_value_range(value, 3, 1));
+    assert!(!valid_url_value_range(value, 2, 3));
+    assert!(!valid_url_value_range(value, 1, 2));
 }

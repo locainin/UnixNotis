@@ -3,10 +3,16 @@ use std::io::Write;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use super::super::pipeline::MAX_ICON_DIMENSION;
+use super::super::model::RasterImage;
+use super::super::pipeline::{MAX_ICON_DIMENSION, MAX_ICON_PIXELS};
 use super::super::svg::{
-    decode_svg_bytes, decompress_svgz_with_limit, is_gzip_payload, validate_svg_dimensions,
+    checked_rgba_len, decode_svg_bytes_with_renderer, decompress_svgz_with_limit, is_gzip_payload,
 };
+use super::support::{renderer_fixture, svg_renderer_binary};
+
+fn decode_svg_bytes(bytes: &[u8], target: u32) -> Result<RasterImage, String> {
+    decode_svg_bytes_with_renderer(bytes, target, svg_renderer_binary())
+}
 
 #[test]
 fn svg_decoder_renders_bounded_pixels_and_preserves_aspect_ratio() {
@@ -17,6 +23,16 @@ fn svg_decoder_renders_bounded_pixels_and_preserves_aspect_ratio() {
     assert_eq!((decoded.width, decoded.height, decoded.stride), (16, 8, 64));
     assert_eq!(decoded.bytes.len(), 16 * 8 * 4);
     assert!(decoded.premultiplied_alpha);
+}
+
+#[test]
+fn svg_protocol_accepts_multiline_documents() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4">
+  <path d="M0 0h8v4H0z"/>
+</svg>"#;
+
+    let decoded = decode_svg_bytes(svg, 16).expect("multiline SVG should render");
+    assert_eq!((decoded.width, decoded.height), (16, 8));
 }
 
 #[test]
@@ -92,4 +108,155 @@ fn svg_source_limits_cover_zero_exact_and_oversized_boundaries() {
     assert!(validate_svg_dimensions(MAX_ICON_DIMENSION, MAX_ICON_DIMENSION).is_ok());
     assert!(validate_svg_dimensions(MAX_ICON_DIMENSION + 1, 1).is_err());
     assert!(validate_svg_dimensions(1, MAX_ICON_DIMENSION + 1).is_err());
+}
+
+#[test]
+fn svg_scaling_rejects_non_finite_zero_and_oversized_inputs() {
+    let input_error = "SVG scaling inputs must be finite and bounded";
+    assert_eq!(
+        fitted_svg_dimensions(f32::NAN, 10.0, 16).expect_err("NaN width must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, f32::INFINITY, 16).expect_err("infinite height must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(0.0, 10.0, 16).expect_err("zero width must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, 10.0, 0).expect_err("zero target must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(10.0, 10.0, MAX_ICON_DIMENSION + 1)
+            .expect_err("oversized target must fail"),
+        input_error
+    );
+    assert_eq!(
+        fitted_svg_dimensions(f32::MIN_POSITIVE, f32::MIN_POSITIVE, 16)
+            .expect_err("infinite scale must fail"),
+        "SVG scaling result must be finite and positive"
+    );
+}
+
+#[test]
+fn svg_scaling_returns_finite_bounded_geometry() {
+    let (width, height, scale) =
+        fitted_svg_dimensions(20.0, 10.0, 16).expect("fit finite geometry");
+
+    assert_eq!((width, height), (16, 8));
+    assert!(scale.is_finite());
+    assert!(scale > 0.0);
+
+    let (width, height, _scale) =
+        fitted_svg_dimensions(1.0, 1.0, MAX_ICON_DIMENSION).expect("fit exact target limit");
+    assert_eq!((width, height), (MAX_ICON_DIMENSION, MAX_ICON_DIMENSION));
+}
+
+#[test]
+fn renderer_output_dimensions_are_checked_before_allocation() {
+    assert!(checked_rgba_len(0, 1).is_err());
+    assert!(checked_rgba_len(MAX_ICON_DIMENSION + 1, 1).is_err());
+    assert!(checked_rgba_len(1, MAX_ICON_DIMENSION + 1).is_err());
+    assert!(checked_rgba_len(u32::MAX, u32::MAX).is_err());
+    assert_eq!(
+        checked_rgba_len(MAX_ICON_DIMENSION, MAX_ICON_DIMENSION).expect("bounded output"),
+        usize::try_from(MAX_ICON_PIXELS).expect("usize pixels") * 4
+    );
+}
+
+#[test]
+fn malformed_renderer_dimensions_are_rejected_without_large_allocation() {
+    let renderer = renderer_fixture("bad-renderer");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("oversized child dimensions must fail");
+    assert!(
+        error.contains("renderer returned oversized image"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn renderer_deadline_terminates_a_slow_child() {
+    let renderer = renderer_fixture("slow-renderer");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("slow renderer must be stopped");
+    assert!(error.contains("timed out"));
+}
+
+#[test]
+fn renderer_stderr_is_drained_while_stdout_is_decoded() {
+    let renderer = renderer_fixture("chatty-renderer");
+
+    let decoded = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect("chatty renderer should not deadlock");
+    assert_eq!((decoded.width, decoded.height), (1, 1));
+}
+
+#[test]
+fn renderer_stderr_is_bounded_before_error_reporting() {
+    let renderer = renderer_fixture("noisy-failing-renderer");
+
+    let error = decode_svg_bytes_with_renderer(b"<svg/>", 16, &renderer)
+        .expect_err("failing renderer should return an error");
+    assert!(error.len() <= 17_000, "stderr exceeded diagnostic cap");
+}
+
+#[test]
+fn missing_sibling_renderer_is_reported() {
+    let error = decode_svg_bytes_with_renderer(
+        b"<svg/>",
+        16,
+        std::path::Path::new("/nonexistent/unixnotis-svg-renderer"),
+    )
+    .expect_err("missing renderer must fail closed");
+    assert!(error.contains("failed to spawn SVG renderer"));
+}
+
+fn fitted_svg_dimensions(
+    source_width: f32,
+    source_height: f32,
+    target: u32,
+) -> Result<(u32, u32, f32), String> {
+    if !source_width.is_finite()
+        || !source_height.is_finite()
+        || source_width <= 0.0
+        || source_height <= 0.0
+        || target == 0
+        || target > MAX_ICON_DIMENSION
+    {
+        return Err("SVG scaling inputs must be finite and bounded".to_string());
+    }
+
+    let target = target as f32;
+    let scale = (target / source_width).min(target / source_height);
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err("SVG scaling result must be finite and positive".to_string());
+    }
+    let scaled_width = (source_width * scale).round().max(1.0);
+    let scaled_height = (source_height * scale).round().max(1.0);
+
+    let width = scaled_width as u32;
+    let height = scaled_height as u32;
+    validate_svg_dimensions(width, height)?;
+    Ok((width, height, scale))
+}
+
+fn validate_svg_dimensions(width: u32, height: u32) -> Result<(), String> {
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if width == 0
+        || height == 0
+        || width > MAX_ICON_DIMENSION
+        || height > MAX_ICON_DIMENSION
+        || pixels > MAX_ICON_PIXELS
+    {
+        return Err(format!(
+            "SVG dimensions exceed center decode limit ({width}x{height})"
+        ));
+    }
+    Ok(())
 }

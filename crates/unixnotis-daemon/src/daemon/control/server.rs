@@ -3,17 +3,13 @@
 use std::sync::Arc;
 
 use unixnotis_core::{
-    CloseReason, ControlState, InhibitorInfo, NotificationView, PanelDebugLevel, PanelRequest,
-    PopupGateState,
+    CloseReason, ControlState, InhibitorInfo, NotificationDiagnosticsView, NotificationKey,
+    NotificationView, PanelDebugLevel, PanelRequest, PopupCandidate, PopupGateState, UiHealth,
 };
 use zbus::message::Header;
 use zbus::{interface, SignalContext};
 
-use crate::daemon::{
-    auth, to_fdo_error, DaemonState, NotificationServer, NOTIFICATIONS_OBJECT_PATH,
-};
-
-use super::clear;
+use crate::daemon::{auth, to_fdo_error, DaemonState};
 
 /// D-Bus server for com.unixnotis.Control
 pub struct ControlServer {
@@ -46,6 +42,15 @@ impl ControlServer {
         auth::authorize_panel_readiness_call(&self.state, header, method).await
     }
 
+    pub(super) async fn authorize_interaction_call(
+        &self,
+        header: &Header<'_>,
+        method: &'static str,
+    ) -> zbus::fdo::Result<()> {
+        // Noninteractive control clients cannot assert a UI confirmation result
+        auth::authorize_interaction_call(&self.state, header, method).await
+    }
+
     pub(super) fn ensure_panel_available(&self) -> zbus::fdo::Result<()> {
         // Rejecting here makes panel outages visible instead of silent
         if self.state.panel_ready() {
@@ -56,13 +61,19 @@ impl ControlServer {
         ))
     }
 
-    pub(super) async fn drain_active_notifications(&self) -> Vec<u32> {
-        let ids = {
-            let mut store = self.state.store.lock().await;
-            store.drain_active_ids()
-        };
-        self.state.cancel_expirations(&ids);
-        ids
+    pub(super) async fn clear_all_notifications(&self) -> Vec<NotificationKey> {
+        let mut store = self.state.store.lock().await;
+        let keys = store.clear_all();
+        // Cancellation follows the same serialized mutation snapshot
+        self.state.cancel_expirations(&keys);
+        keys
+    }
+
+    pub(super) async fn drain_active_notifications(&self) -> Vec<NotificationKey> {
+        let mut store = self.state.store.lock().await;
+        let keys = store.drain_active_keys();
+        self.state.cancel_expirations(&keys);
+        keys
     }
 
     pub(super) async fn clear_saved_history(&self) {
@@ -73,11 +84,23 @@ impl ControlServer {
 
 #[interface(name = "com.unixnotis.Control")]
 impl ControlServer {
-    async fn get_state(
+    async fn get_api_version(&self) -> u32 {
+        unixnotis_core::CONTROL_API_VERSION
+    }
+
+    async fn get_state(&self) -> zbus::fdo::Result<ControlState> {
+        self.query_state().await
+    }
+
+    pub(super) async fn get_snapshot(
         &self,
         #[zbus(header)] header: Header<'_>,
-    ) -> zbus::fdo::Result<ControlState> {
-        self.query_state(&header).await
+    ) -> zbus::fdo::Result<unixnotis_core::ControlSnapshot> {
+        self.query_snapshot(&header).await
+    }
+
+    async fn get_ui_health(&self) -> zbus::fdo::Result<UiHealth> {
+        Ok(self.state.ui_health())
     }
 
     async fn list_active(
@@ -85,6 +108,13 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<Vec<NotificationView>> {
         self.query_active(&header).await
+    }
+
+    async fn list_popup_candidates(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationView>> {
+        self.query_popup_candidates(&header).await
     }
 
     async fn list_history(
@@ -102,9 +132,40 @@ impl ControlServer {
         self.query_active_notification(id, &header).await
     }
 
+    async fn get_popup_candidate(
+        &self,
+        id: u32,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<PopupCandidate>> {
+        self.query_popup_candidate(id, &header).await
+    }
+
+    async fn get_notification_diagnostics(
+        &self,
+        id: u32,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<Vec<NotificationDiagnosticsView>> {
+        self.query_notification_diagnostics(id, &header).await
+    }
+
     async fn open_panel(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.request_panel_command(&header, "OpenPanel", PanelRequest::open())
             .await
+    }
+
+    async fn refresh_applications(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "RefreshApplications")
+            .await?;
+        if self.state.request_desktop_index_refresh() {
+            // The worker owns rebuild timing, watcher replacement, and publication
+            return Ok(());
+        }
+        Err(zbus::fdo::Error::Failed(
+            "desktop application refresh worker is unavailable".to_string(),
+        ))
     }
 
     async fn open_panel_debug(
@@ -132,12 +193,21 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "SetDnd").await?;
-        self.apply_dnd_state(enabled).await
+        self.state.apply_dnd_state(enabled).await
+    }
+
+    pub(super) async fn set_dnd_until(
+        &self,
+        expires_at: i64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "SetDndUntil").await?;
+        self.state.apply_dnd_until(expires_at).await
     }
 
     async fn toggle_dnd(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ToggleDnd").await?;
-        self.apply_toggle_dnd().await
+        self.state.apply_toggle_dnd().await
     }
 
     async fn inhibit(
@@ -164,28 +234,48 @@ impl ControlServer {
         self.query_inhibitors(&header).await
     }
 
-    async fn dismiss(&self, id: u32, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "Dismiss").await?;
-        // Delegate to shared state helper so all close signals stay consistent
+    pub(super) async fn dismiss_generation(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_control_call(&header, "DismissGeneration")
+            .await?;
         self.state
-            .dismiss_from_panel(id)
+            .dismiss_generation(NotificationKey { id, generation })
             .await
             .map_err(to_fdo_error)
     }
 
-    pub(super) async fn invoke_action(
+    pub(super) async fn invoke_action_generation(
         &self,
         id: u32,
+        generation: u64,
         action_key: &str,
+        confirmed: bool,
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        self.authorize_control_call(&header, "InvokeAction").await?;
-        // Reuse the freedesktop action signal path for compatibility with listeners
-        let ctx = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        NotificationServer::action_invoked(&ctx, id, action_key)
-            .await
-            .map_err(to_fdo_error)
+        self.authorize_interaction_call(&header, "InvokeActionGeneration")
+            .await?;
+        self.invoke_validated_action_generation(
+            NotificationKey { id, generation },
+            action_key,
+            confirmed,
+        )
+        .await
+    }
+
+    pub(super) async fn reply_notification(
+        &self,
+        id: u32,
+        generation: u64,
+        reply_text: &str,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.authorize_interaction_call(&header, "ReplyNotification")
+            .await?;
+        self.submit_inline_reply(id, generation, reply_text).await
     }
 
     pub(super) async fn clear_all(
@@ -193,9 +283,8 @@ impl ControlServer {
         #[zbus(header)] header: Header<'_>,
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearAll").await?;
-        let ids = self.drain_active_notifications().await;
-        self.clear_saved_history().await;
-        clear::emit_clear_all_signals(&self.state, ids).await;
+        let ids = self.clear_all_notifications().await;
+        self.state.publish_notifications_cleared(ids).await;
         Ok(())
     }
 
@@ -205,7 +294,7 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearActive").await?;
         let ids = self.drain_active_notifications().await;
-        clear::emit_clear_all_signals(&self.state, ids).await;
+        self.state.publish_notifications_cleared(ids).await;
         Ok(())
     }
 
@@ -215,7 +304,7 @@ impl ControlServer {
     ) -> zbus::fdo::Result<()> {
         self.authorize_control_call(&header, "ClearHistory").await?;
         self.clear_saved_history().await;
-        clear::emit_clear_all_signals(&self.state, Vec::new()).await;
+        self.state.publish_notifications_cleared(Vec::new()).await;
         Ok(())
     }
 
@@ -232,24 +321,68 @@ impl ControlServer {
             .await
     }
 
+    async fn mark_popups_ready(&self, #[zbus(header)] header: Header<'_>) -> zbus::fdo::Result<()> {
+        self.set_popups_ready_state(&header, "MarkPopupsReady", true)
+            .await
+    }
+
+    async fn mark_popups_not_ready(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.set_popups_ready_state(&header, "MarkPopupsNotReady", false)
+            .await
+    }
+
+    async fn mark_popup_materialized(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.mark_popup_generation_stage(
+            NotificationKey { id, generation },
+            unixnotis_core::PopupDeliveryStage::Materialized,
+            "MarkPopupMaterialized",
+            &header,
+        )
+        .await
+    }
+
+    async fn mark_popup_visible(
+        &self,
+        id: u32,
+        generation: u64,
+        #[zbus(header)] header: Header<'_>,
+    ) -> zbus::fdo::Result<()> {
+        self.mark_popup_generation_stage(
+            NotificationKey { id, generation },
+            unixnotis_core::PopupDeliveryStage::Visible,
+            "MarkPopupVisible",
+            &header,
+        )
+        .await
+    }
+
     #[zbus(signal)]
     pub(crate) async fn notification_added(
         ctx: &SignalContext<'_>,
         id: u32,
-        show_popup: bool,
+        generation: u64,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub(crate) async fn notification_updated(
         ctx: &SignalContext<'_>,
         id: u32,
-        show_popup: bool,
+        generation: u64,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub(crate) async fn notification_closed(
         ctx: &SignalContext<'_>,
         id: u32,
+        generation: u64,
         reason: CloseReason,
     ) -> zbus::Result<()>;
 

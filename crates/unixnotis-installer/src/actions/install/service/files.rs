@@ -7,11 +7,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
+use unixnotis_core::filesystem::{
+    ensure_exact_file, ensure_exact_file_pair, regular_file_contents_equal, remove_empty_directory,
+    remove_regular_file, remove_regular_file_pair_if_contents, set_file_mode, write_file_atomic,
+    write_file_atomic_preserving_mode, EnsureExactFileOutcome, EnsureExactFilePairOutcome,
+    RemoveExactFileOutcome,
+};
 
 use crate::paths::format_with_home;
 use crate::service_manager::MANAGED_DIRECTORY_MARKER_CONTENTS;
-
-use super::super::super::config::backup::write_atomic;
 
 pub(in crate::actions::install::service) fn write_regular_service_file(
     path: &Path,
@@ -20,7 +24,7 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
     artifact_label: &str,
 ) -> Result<bool> {
     // Refuse unsafe existing paths before looking at file contents
-    ensure_regular_artifact_file_path(path)?;
+    let path_exists = ensure_regular_artifact_file_path(path)?;
     let mode_changed = match mode {
         Some(mode) => {
             #[cfg(unix)]
@@ -38,30 +42,37 @@ pub(in crate::actions::install::service) fn write_regular_service_file(
         }
         None => false,
     };
-    let changed = match fs::read_to_string(path) {
-        // Stable contents keep reinstall quiet and avoid unnecessary manager reloads
-        Ok(existing) if existing == contents => false,
-        Ok(_) | Err(_) => {
-            // Atomic writes avoid half-written service definitions on interruption
-            write_atomic(path, contents)
-                .with_context(|| format!("failed to write {artifact_label}"))?;
-            true
+    let contents_changed = if path_exists {
+        let maximum_size = u64::try_from(contents.len()).unwrap_or(u64::MAX);
+        // One no-follow descriptor owns both the size gate and bounded byte comparison
+        match regular_file_contents_equal(path, contents.as_bytes(), maximum_size) {
+            Ok(equal) => !equal,
+            Err(error) if error.kind() == ErrorKind::NotFound => true,
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to compare {artifact_label}"));
+            }
         }
+    } else {
+        true
     };
 
-    if let Some(mode) = mode {
-        // Only artifacts that requested a mode receive chmod
+    if contents_changed {
+        // Explicit modes keep service scripts independent of process umask
+        mode.map_or_else(
+            || write_file_atomic_preserving_mode(path, contents.as_bytes(), 0o644),
+            |mode| write_file_atomic(path, contents.as_bytes(), mode),
+        )
+        .with_context(|| format!("failed to write {artifact_label}"))?;
+    } else if mode_changed {
         #[cfg(unix)]
-        {
-            if changed || mode_changed {
-                // Mode is explicit because service scripts must not depend on process umask
-                fs::set_permissions(path, fs::Permissions::from_mode(mode))
-                    .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
-            }
+        if let Some(mode) = mode {
+            // Descriptor-based chmod keeps a swapped pathname from redirecting the update
+            set_file_mode(path, mode)
+                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
         }
     }
 
-    Ok(changed || mode_changed)
+    Ok(contents_changed || mode_changed)
 }
 
 pub(in crate::actions::install::service) fn write_shared_service_file(
@@ -71,27 +82,40 @@ pub(in crate::actions::install::service) fn write_shared_service_file(
     artifact_label: &str,
     created_marker: Option<&Path>,
 ) -> Result<bool> {
-    // Shared files are setup anchors, not UnixNotis-owned replacement targets
-    let existed_before = ensure_regular_artifact_file_path(path)?;
-    if existed_before {
-        let existing = fs::read_to_string(path)
-            .with_context(|| format!("failed to read {}", format_with_home(path)))?;
-        if existing != contents {
+    if let Some(marker) = created_marker {
+        let outcome = ensure_exact_file_pair(
+            path,
+            contents.as_bytes(),
+            mode.unwrap_or(0o644),
+            marker,
+            MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(),
+            0o644,
+        )
+        .with_context(|| format!("failed to write {artifact_label} and its ownership marker"))?;
+        return match outcome {
+            EnsureExactFilePairOutcome::Created => Ok(true),
+            EnsureExactFilePairOutcome::AlreadyExact
+            | EnsureExactFilePairOutcome::AlreadyExactUnowned => Ok(false),
+            EnsureExactFilePairOutcome::ContentsMismatch => Err(anyhow!(
+                "refusing to overwrite shared service artifact at {}",
+                format_with_home(path)
+            )),
+        };
+    }
+
+    let outcome = ensure_exact_file(path, contents.as_bytes(), mode.unwrap_or(0o644))
+        .with_context(|| format!("failed to write {artifact_label}"))?;
+    match outcome {
+        EnsureExactFileOutcome::ContentsMismatch => {
             return Err(anyhow!(
                 "refusing to overwrite shared service artifact at {}",
                 format_with_home(path)
             ));
         }
-        apply_artifact_mode_if_needed(path, mode)?;
-        return Ok(false);
+        EnsureExactFileOutcome::AlreadyExact => return Ok(false),
+        EnsureExactFileOutcome::Created => {}
     }
 
-    // Missing shared files can be seeded because no user contents are being replaced
-    write_atomic(path, contents).with_context(|| format!("failed to write {artifact_label}"))?;
-    apply_artifact_mode_if_needed(path, mode)?;
-    if let Some(marker) = created_marker {
-        write_shared_creation_marker(marker)?;
-    }
     Ok(true)
 }
 
@@ -100,18 +124,20 @@ pub(in crate::actions::install::service) fn remove_shared_service_file(
     created_marker: &Path,
     expected_contents: &str,
 ) -> Result<bool> {
-    if !shared_creation_marker_is_valid(created_marker) {
-        // No marker means the shared file predated UnixNotis or has unknown ownership
-        return Ok(false);
+    let outcome = remove_regular_file_pair_if_contents(
+        path,
+        expected_contents.as_bytes(),
+        created_marker,
+        MANAGED_DIRECTORY_MARKER_CONTENTS.as_bytes(),
+    )
+    .with_context(|| format!("failed to remove {}", format_with_home(path)))?;
+    match outcome {
+        RemoveExactFileOutcome::Missing | RemoveExactFileOutcome::ContentsMismatch => Ok(false),
+        RemoveExactFileOutcome::Removed => {
+            remove_empty_shared_layout_dirs(path)?;
+            Ok(true)
+        }
     }
-    if !shared_file_contents_match(path, expected_contents)? {
-        // User edits after install turn the file back into shared user state
-        return Ok(false);
-    }
-    remove_regular_service_file(path)?;
-    remove_regular_service_file(created_marker)?;
-    remove_empty_shared_layout_dirs(path)?;
-    Ok(true)
 }
 
 #[cfg(unix)]
@@ -125,67 +151,6 @@ pub(in crate::actions::install) fn current_mode(path: &Path) -> Result<Option<u3
     }
 }
 
-fn apply_artifact_mode_if_needed(path: &Path, mode: Option<u32>) -> Result<()> {
-    let Some(mode) = mode else {
-        return Ok(());
-    };
-
-    #[cfg(unix)]
-    {
-        if current_mode(path)? != Some(mode) {
-            // Shared support files still need explicit modes when the backend requests one
-            fs::set_permissions(path, fs::Permissions::from_mode(mode))
-                .with_context(|| format!("failed to chmod {}", format_with_home(path)))?;
-        }
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        Err(anyhow!(
-            "cannot apply executable mode {} on non-Unix platforms",
-            mode
-        ))
-    }
-}
-
-fn write_shared_creation_marker(path: &Path) -> Result<()> {
-    ensure_regular_artifact_file_path(path)?;
-    write_atomic(path, MANAGED_DIRECTORY_MARKER_CONTENTS)
-        .with_context(|| format!("failed to write {}", format_with_home(path)))
-}
-
-fn shared_creation_marker_is_valid(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    if !metadata.file_type().is_file() {
-        return false;
-    }
-    fs::read_to_string(path).is_ok_and(|contents| contents == MANAGED_DIRECTORY_MARKER_CONTENTS)
-}
-
-fn shared_file_contents_match(path: &Path, expected_contents: &str) -> Result<bool> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-        Err(err) => {
-            return Err(err)
-                .with_context(|| format!("failed to inspect {}", format_with_home(path)));
-        }
-    };
-    if !metadata.file_type().is_file() {
-        // A marker does not make a replaced symlink, socket, or directory removable
-        return Err(anyhow!(
-            "refusing to remove non-regular shared service artifact at {}",
-            format_with_home(path)
-        ));
-    }
-    fs::read_to_string(path)
-        .map(|contents| contents == expected_contents)
-        .with_context(|| format!("failed to read {}", format_with_home(path)))
-}
-
 fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {
     let Some(parent) = path.parent() else {
         return Ok(());
@@ -197,16 +162,9 @@ fn remove_empty_shared_layout_dirs(path: &Path) -> Result<()> {
 }
 
 fn remove_dir_if_empty(path: &Path) -> Result<()> {
-    match fs::remove_dir(path) {
-        Ok(()) => Ok(()),
-        Err(err)
-            if matches!(
-                err.kind(),
-                ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty
-            ) =>
-        {
-            Ok(())
-        }
+    match remove_empty_directory(path) {
+        Ok(true | false) => Ok(()),
+        Err(err) if matches!(err.kind(), ErrorKind::DirectoryNotEmpty) => Ok(()),
         Err(err) => {
             Err(err).with_context(|| format!("failed to remove {}", format_with_home(path)))
         }
@@ -259,5 +217,14 @@ pub(in crate::actions::install::service) fn remove_regular_service_file(path: &P
         ));
     }
 
-    fs::remove_file(path).with_context(|| format!("failed to remove {}", format_with_home(path)))
+    if remove_regular_file(path)
+        .with_context(|| format!("failed to remove {}", format_with_home(path)))?
+    {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "service file disappeared before removal at {}",
+            format_with_home(path)
+        ))
+    }
 }

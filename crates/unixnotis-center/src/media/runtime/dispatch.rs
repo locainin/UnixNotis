@@ -44,10 +44,10 @@ pub(super) async fn handle_runtime_signal(
     state: &mut MediaRuntimeState,
     signal_tx: &mpsc::Sender<MediaSignal>,
     sender: &async_channel::Sender<UiEvent>,
-    signal: MediaSignal,
+    bus_name: String,
+    origin: MediaRefreshOrigin,
 ) {
     // Signal payloads name the one player that changed, avoiding a full cache rebuild
-    let MediaSignal::PropertiesChanged { bus_name, origin } = signal;
     refresh_player_cache(
         &state.players,
         &mut state.cache,

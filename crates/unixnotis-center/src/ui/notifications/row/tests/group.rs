@@ -3,7 +3,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use unixnotis_core::{NotificationImage, NotificationView};
 
-use super::{build_group_row, update_group_row};
+use super::{build_group_row, group_accessible_label, update_group_row};
 use crate::control::UiEvent;
 use crate::ui::icons::IconResolver;
 use crate::ui::notifications::item::{RowData, RowKind};
@@ -13,13 +13,29 @@ use crate::ui::notifications::test_support as support;
 fn notification(app_name: &str) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id: 1,
+        generation: 1,
         app_name: app_name.to_string(),
+        attribution: unixnotis_core::NotificationAttribution::verified(
+            app_name,
+            app_name,
+            "org.example.App",
+            "example-app",
+            unixnotis_core::AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.App".to_string(),
+        ),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         urgency: 1,
+        category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     })
 }
 
@@ -30,17 +46,35 @@ fn header_button(root: &gtk::Box) -> gtk::Button {
         .expect("group child should be button")
 }
 
+fn direct_child_count(container: &gtk::Box) -> usize {
+    let mut count = 0;
+    let mut child = container.first_child();
+    while let Some(widget) = child {
+        count += 1;
+        child = widget.next_sibling();
+    }
+    count
+}
+
 #[gtk::test]
 fn update_group_row_sets_title_count_and_expanded_state() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
+    assert_eq!(root.margin_bottom(), 8);
     let data = RowData::group_header(Rc::from("terminal"), 3, false, notification("Terminal"));
 
     update_group_row(&widgets, &root, &data, &IconResolver::new());
 
     assert_eq!(widgets.title.text().as_str(), "Terminal");
+    assert_eq!(widgets.avatar.width_request(), 26);
+    assert_eq!(widgets.avatar.height_request(), 26);
+    assert_eq!(widgets.icon.pixel_size(), 18);
     assert_eq!(widgets.count.text().as_str(), "3");
+    assert!(gtk::test_accessible_has_property(
+        &widgets.button,
+        gtk::AccessibleProperty::Label
+    ));
     assert_eq!(
         widgets.chevron.icon_name().as_deref(),
         Some("pan-down-symbolic")
@@ -60,11 +94,49 @@ fn update_group_row_sets_title_count_and_expanded_state() {
     assert!(root.has_css_class("unixnotis-group-row-expanded"));
 }
 
+#[test]
+fn group_accessible_name_keeps_identity_trust_count_and_state() {
+    assert_eq!(
+        group_accessible_label(
+            "Unknown application",
+            "Suspicious",
+            "Claimed app: Example Chat",
+            4,
+            true,
+        ),
+        "Unknown application. Suspicious. Claimed app: Example Chat. 4 notifications. Expanded"
+    );
+    assert_eq!(
+        group_accessible_label("Example Chat", "", "", 1, false),
+        "Example Chat. 1 notification"
+    );
+}
+
+#[gtk::test]
+fn singleton_group_header_hides_group_controls_and_is_not_interactive() {
+    support::init_gtk();
+    let (event_tx, event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let data = RowData::group_header(Rc::from("terminal"), 1, false, notification("Terminal"));
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert!(!widgets.count.get_visible());
+    assert!(!widgets.chevron.get_visible());
+    assert!(!widgets.button.is_sensitive());
+    assert!(!widgets.button.is_focusable());
+    header_button(&root).emit_clicked();
+    assert!(event_rx.try_recv().is_err());
+}
+
 #[gtk::test]
 fn update_group_row_falls_back_to_group_key_without_sample() {
     support::init_gtk();
     let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
     let (root, widgets) = build_group_row(event_tx);
+    let resolver = IconResolver::new();
+    let sample = RowData::group_header(Rc::from("terminal"), 2, false, notification("Terminal"));
+    update_group_row(&widgets, &root, &sample, &resolver);
     let data = RowData {
         kind: RowKind::GroupHeader,
         group_key: Rc::from("terminal"),
@@ -73,11 +145,186 @@ fn update_group_row_falls_back_to_group_key_without_sample() {
         ..RowData::default()
     };
 
-    update_group_row(&widgets, &root, &data, &IconResolver::new());
+    update_group_row(&widgets, &root, &data, &resolver);
 
     assert_eq!(widgets.title.text().as_str(), "terminal");
+    assert!(widgets.icon.paintable().is_none());
     assert!(!widgets.icon.get_visible());
     assert!(root.has_css_class("unixnotis-group-row-no-icon"));
+}
+
+#[gtk::test]
+fn missing_group_sample_clears_recycled_conflict_presentation() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let resolver = IconResolver::new();
+    let mut conflicting = notification("Unknown application").as_ref().clone();
+    conflicting.attribution = unixnotis_core::NotificationAttribution::conflict(
+        "Example Claim",
+        "org.example.Application",
+        unixnotis_core::AttributionReason::ExecutableMismatch,
+        "conflicting process evidence",
+        "conflict:example".to_string(),
+    );
+    let conflict =
+        RowData::group_header(Rc::from("conflict:example"), 2, false, Rc::new(conflicting));
+    update_group_row(&widgets, &root, &conflict, &resolver);
+    assert!(root.has_css_class("unixnotis-attribution-warning"));
+    assert!(root.has_css_class("conflict"));
+    assert!(widgets.title.tooltip_text().is_some());
+
+    let empty = RowData {
+        kind: RowKind::GroupHeader,
+        group_key: Rc::from("empty:example"),
+        count: 1,
+        notification: None,
+        ..RowData::default()
+    };
+    update_group_row(&widgets, &root, &empty, &resolver);
+
+    assert!(!root.has_css_class("unixnotis-attribution-warning"));
+    assert!(!root.has_css_class("conflict"));
+    assert!(!root.has_css_class("relay"));
+    assert!(widgets.title.tooltip_text().is_none());
+}
+
+#[gtk::test]
+fn update_group_row_keeps_conflict_warning_out_of_the_title() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut conflicting = notification("Unknown application").as_ref().clone();
+    conflicting.attribution = unixnotis_core::NotificationAttribution::conflict(
+        "Trusted Brand",
+        "org.example.TrustedBrand",
+        unixnotis_core::AttributionReason::ExecutableMismatch,
+        "source /tmp/sender-bin",
+        "executable:1:2".to_string(),
+    );
+    let data = RowData::group_header(Rc::from("executable:1:2"), 1, false, Rc::new(conflicting));
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert_eq!(widgets.title.text().as_str(), "Unknown application");
+    assert!(widgets
+        .title
+        .tooltip_text()
+        .is_some_and(|text| text.contains("/tmp/sender-bin")));
+    assert_eq!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-shield-warning-symbolic")
+    );
+    assert_eq!(
+        widgets.secondary.text().as_str(),
+        "Claimed app: Trusted Brand"
+    );
+    assert_eq!(widgets.trust_chip.text().as_str(), "Suspicious");
+    assert!(widgets.secondary.get_visible());
+    assert!(widgets.trust_chip.get_visible());
+    assert!(root.has_css_class("unixnotis-attribution-warning"));
+}
+
+#[gtk::test]
+fn recognized_group_keeps_application_icon_separate_from_trust_chip() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut recognized = notification("Example Chat").as_ref().clone();
+    recognized.attribution = unixnotis_core::NotificationAttribution::associated(
+        "Example Chat",
+        "Example Chat",
+        "org.example.Chat",
+        "application-x-executable-symbolic",
+        unixnotis_core::IdentityAssurance::UserAssociated,
+        unixnotis_core::InteractionPolicies::CONFIRM_ACTIONS,
+        unixnotis_core::AttributionReason::ExactUserExecutable,
+        "associated user application",
+        "associated:user-app:org.example.Chat".to_string(),
+    );
+    let data = RowData::group_header(
+        Rc::from("associated:user-app:org.example.Chat"),
+        2,
+        false,
+        Rc::new(recognized),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert!(widgets.icon.paintable().is_some());
+    assert_ne!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-app-unknown-symbolic")
+    );
+    assert_eq!(widgets.trust_chip.text().as_str(), "Local app");
+    assert!(widgets.trust_chip.get_visible());
+}
+
+#[gtk::test]
+fn unresolved_group_keeps_unverified_claimed_branding_separate_from_trust() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut unresolved = notification("Example Chat").as_ref().clone();
+    unresolved.attribution = unixnotis_core::NotificationAttribution::unresolved(
+        "Example Chat",
+        unixnotis_core::AttributionReason::MissingSenderEvidence,
+        "no sender evidence",
+        "claim:example-chat".to_string(),
+    );
+    // A claimed desktop id is presentation-only and does not authenticate the sender
+    // A symbolic fixture keeps this attribution test independent from raster-worker timing
+    unresolved.image.claimed_desktop_id = "application-x-executable-symbolic".to_string();
+    let data = RowData::group_header(
+        Rc::from("claim:example-chat"),
+        2,
+        false,
+        Rc::new(unresolved),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    assert_ne!(
+        widgets.icon.icon_name().as_deref(),
+        Some("unixnotis-app-unknown-symbolic")
+    );
+    assert!(widgets.icon.paintable().is_some());
+    assert_eq!(widgets.trust_chip.text().as_str(), "Unverified");
+    assert!(widgets.trust_chip.get_visible());
+}
+
+#[gtk::test]
+fn relay_group_header_keeps_claim_below_command_line_identity() {
+    support::init_gtk();
+    let (event_tx, _event_rx) = async_channel::bounded::<UiEvent>(4);
+    let (root, widgets) = build_group_row(event_tx);
+    let mut relayed = notification("Example Chat").as_ref().clone();
+    relayed.attribution = unixnotis_core::NotificationAttribution::relay(
+        "Example Chat",
+        "Sent via /usr/bin/notify-send",
+        "relay:notify-send:example-chat".to_string(),
+    );
+    let data = RowData::group_header(
+        Rc::from("relay:notify-send:example-chat"),
+        4,
+        false,
+        Rc::new(relayed),
+    );
+
+    update_group_row(&widgets, &root, &data, &IconResolver::new());
+
+    let header = header_button(&root)
+        .child()
+        .and_downcast::<gtk::Box>()
+        .expect("group header content");
+    assert_eq!(direct_child_count(&header), 4);
+    assert_eq!(header.spacing(), 8);
+    assert_eq!(widgets.title.text().as_str(), "Command-line notification");
+    assert_eq!(widgets.secondary.text().as_str(), "App label: Example Chat");
+    assert!(widgets.secondary.get_visible());
+    assert!(!widgets.trust_chip.get_visible());
+    assert!(root.has_css_class("relay"));
+    assert!(!root.has_css_class("unixnotis-attribution-warning"));
 }
 
 #[gtk::test]

@@ -24,7 +24,9 @@ mod debug_logs;
 mod doctor;
 mod output;
 mod preset;
+mod session_environment;
 mod system_tools;
+mod theme;
 
 use std::process::ExitCode;
 

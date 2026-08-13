@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use super::*;
+use crate::CommandSpec;
 use crate::{Config, ConfigDiagnosticKind, CURRENT_CONFIG_VERSION};
 
 struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
@@ -20,34 +21,26 @@ impl Write for CapturedWriter {
 }
 
 #[test]
-fn migration_diagnostic_reports_unversioned_input_without_exposing_text() {
-    let diagnostic = migration_diagnostic("[panel]\ntitle = 'private title'\n")
-        .expect("unversioned config should report migration");
-
-    assert_eq!(diagnostic.code, "config.schema.migrated");
-    assert_eq!(diagnostic.original.as_deref(), Some("0"));
-    assert_eq!(
-        diagnostic.effective.as_deref(),
-        Some(CURRENT_CONFIG_VERSION.to_string().as_str())
+fn current_empty_exact_media_policy_emits_a_warning() {
+    let input = format!(
+        "config_version = {CURRENT_CONFIG_VERSION}\n[media]\nlocal_art_policy = \"exact_executable_only\"\n"
     );
-    assert!(!diagnostic.message.contains("private title"));
-}
-
-#[test]
-fn current_schema_produces_no_migration_diagnostic() {
-    let input = format!("config_version = {CURRENT_CONFIG_VERSION}\n");
-
-    assert!(migration_diagnostic(&input).is_none());
+    let report = Config::parse_with_report(&input).expect("current config should parse");
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "config.media.empty-exact-allowlist"
+            && diagnostic.kind == ConfigDiagnosticKind::Warning
+    }));
 }
 
 #[test]
 fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
     let mut before = Config::default();
     before.widgets.refresh_interval_ms = 1;
-    before.widgets.volume.get_cmd = "private-volume-command-sentinel".to_string();
+    before.widgets.volume.get_cmd =
+        CommandSpec::direct("private-volume-command-sentinel", [] as [&str; 0]);
     let mut after = before.clone();
     after.widgets.refresh_interval_ms = 100;
-    after.widgets.volume.get_cmd = "pactl get-sink-volume".to_string();
+    after.widgets.volume.get_cmd = CommandSpec::direct("pactl", ["get-sink-volume"]);
 
     let diagnostics = adjustment_diagnostics(&before, &after);
 
@@ -57,7 +50,9 @@ fn adjustment_diagnostics_report_safe_scalar_changes_and_hide_commands() {
             && item.effective.as_deref() == Some("100")
     }));
     assert!(diagnostics.iter().any(|item| {
-        item.path.as_deref() == Some("widgets.volume.get_cmd")
+        item.path
+            .as_deref()
+            .is_some_and(|path| path.starts_with("widgets.volume.get_cmd"))
             && item.code == "config.widgets.volume-backend-selected"
     }));
     let rendered = format!("{diagnostics:?}");
@@ -72,20 +67,6 @@ fn unknown_key_diagnostic_uses_stable_code_and_warning_kind() {
     assert_eq!(diagnostic.code, "config.unknown-key");
     assert_eq!(diagnostic.kind, ConfigDiagnosticKind::Warning);
     assert_eq!(diagnostic.path.as_deref(), Some("panel.search_visble"));
-}
-
-#[test]
-fn legacy_migration_reports_each_inserted_compatibility_path() {
-    let report = Config::parse_with_report("").expect("empty legacy config should migrate");
-
-    assert!(report.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "config.schema.field-migrated"
-            && diagnostic.path.as_deref() == Some("panel.empty_offset_top")
-    }));
-    assert!(report.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "config.schema.field-migrated"
-            && diagnostic.path.as_deref() == Some("media.art_size_px")
-    }));
 }
 
 #[test]
@@ -215,7 +196,7 @@ fn safe_values_distinguish_finite_and_non_finite_numbers() {
 }
 
 #[test]
-fn compatibility_logger_emits_each_diagnostic() {
+fn diagnostic_logger_emits_each_current_diagnostic() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let writer_output = output.clone();
     let subscriber = tracing_subscriber::fmt()
@@ -225,7 +206,7 @@ fn compatibility_logger_emits_each_diagnostic() {
         .finish();
     let diagnostics = vec![
         unknown_key_diagnostic("panel.unknown".to_string()),
-        migrated_field_diagnostic("panel.width".to_string()),
+        unknown_key_diagnostic("media.unknown".to_string()),
     ];
 
     tracing::subscriber::with_default(subscriber, || {
@@ -240,5 +221,6 @@ fn compatibility_logger_emits_each_diagnostic() {
     )
     .expect("diagnostic output should be UTF-8");
     assert!(rendered.contains("config.unknown-key"));
-    assert!(rendered.contains("config.schema.field-migrated"));
+    assert!(rendered.contains("panel.unknown"));
+    assert!(rendered.contains("media.unknown"));
 }

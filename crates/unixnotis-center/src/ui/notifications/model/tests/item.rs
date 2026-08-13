@@ -9,13 +9,21 @@ use super::{RowData, RowItem, RowKind, RowPresentation};
 fn notification(id: u32) -> Rc<NotificationView> {
     Rc::new(NotificationView {
         id,
+        generation: u64::from(id),
         app_name: "Terminal".to_string(),
+        attribution: unixnotis_core::NotificationAttribution::default(),
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     })
 }
 
@@ -40,6 +48,7 @@ fn row_data_notification_sets_expected_fields() {
         received_at_ms: 123,
         show_metadata: true,
         show_thumbnail: true,
+        ..RowPresentation::default()
     };
 
     let data = RowData::notification(
@@ -49,12 +58,12 @@ fn row_data_notification_sets_expected_fields() {
         2,
         false,
         true,
-        presentation,
+        presentation.clone(),
     );
 
     assert_eq!(data.kind, RowKind::Notification);
     assert_eq!(data.id, 42);
-    assert!(data.stacked);
+    assert!(data.collapsed_group_preview);
     assert_eq!(data.stack_depth, 2);
     assert!(data.is_active);
     assert_eq!(data.presentation, presentation);
@@ -110,6 +119,7 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
             received_at_ms: 12,
             show_metadata: true,
             show_thumbnail: false,
+            ..RowPresentation::default()
         },
     );
 
@@ -136,7 +146,11 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base.clone();
-    changed.stacked = true;
+    changed.app_header_present = false;
+    assert!(!base.is_equivalent(&changed));
+
+    let mut changed = base.clone();
+    changed.collapsed_group_preview = true;
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base.clone();
@@ -149,6 +163,10 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
 
     let mut changed = base.clone();
     changed.presentation.show_thumbnail = true;
+    assert!(!base.is_equivalent(&changed));
+
+    let mut changed = base.clone();
+    changed.presentation.reduced_motion = true;
     assert!(!base.is_equivalent(&changed));
 
     let mut changed = base;
@@ -164,6 +182,7 @@ fn row_data_equivalence_requires_every_rendered_field_to_match() {
             received_at_ms: 12,
             show_metadata: true,
             show_thumbnail: false,
+            ..RowPresentation::default()
         },
     )
     .is_equivalent(&changed));

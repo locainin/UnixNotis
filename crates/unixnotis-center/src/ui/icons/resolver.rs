@@ -5,10 +5,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::glib;
+use gtk::prelude::WidgetExt;
 use unixnotis_core::NotificationView;
 use unixnotis_ui::icons::DesktopIconIndex;
+use unixnotis_ui::presentation::{apply_semantic_badge, BadgePresentation, TrustLevel};
 
-use super::cache::{IconCache, IconKey};
+use super::cache::{clear_image_key, IconCache, IconKey};
 use super::decode::{IconUpdate, IconWorker};
 use super::missing::MissingIconCache;
 
@@ -33,25 +35,74 @@ impl IconResolver {
             missing_names: RefCell::new(MissingIconCache::new(512)),
             worker,
         });
-        let update_target = Rc::clone(&inner);
+        let update_target = Rc::downgrade(&inner);
         glib::MainContext::default().spawn_local(async move {
             while let Ok(update) = update_rx.recv().await {
                 // GTK objects are updated only from the owning main context
-                update_target.handle_update(update);
+                let Some(inner) = update_target.upgrade() else {
+                    break;
+                };
+                inner.handle_update(update);
             }
         });
 
         Self { inner }
     }
 
-    pub fn apply_icon(
+    pub fn apply_badge(
         &self,
         image: &gtk::Image,
         notification: &NotificationView,
         size: i32,
         scale: i32,
     ) {
-        self.inner.apply_icon(image, notification, size, scale);
+        // Header badges deliberately exclude caller-controlled content image data and paths
+        self.inner.apply_badge(image, notification, size, scale);
+    }
+
+    pub fn clear_identity_badge(&self, image: &gtk::Image) {
+        // Invalidate old async work before clearing the recycled GTK image
+        clear_image_key(image);
+        image.clear();
+        image.set_visible(false);
+    }
+
+    /// Applies application branding without letting contradictory trust evidence disappear
+    pub fn apply_identity_badge(
+        &self,
+        image: &gtk::Image,
+        notification: &NotificationView,
+        badge: BadgePresentation,
+        trust: TrustLevel,
+        size: i32,
+        scale: i32,
+    ) {
+        // Recycled rows may retain both a paintable and a hidden visibility state
+        self.clear_identity_badge(image);
+
+        if trust.semantic_badge_is_authoritative() {
+            // Conflict and relay states keep their semantic warning icon in front
+            if apply_semantic_badge(image, badge, size) {
+                // A semantic warning is visible even when this widget was recycled
+                image.set_visible(true);
+            }
+            return;
+        }
+
+        // Recognized and unresolved branding is presentation-only and may be resolved first
+        self.apply_badge(image, notification, size, scale);
+        if !image.get_visible() && apply_semantic_badge(image, badge, size) {
+            // Resolver misses and pending work leave the image hidden
+            image.set_visible(true);
+        }
+    }
+
+    pub fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        self.inner.apply_sender_visual(image, notification);
+    }
+
+    pub fn apply_content_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        self.inner.apply_content_visual(image, notification);
     }
 
     pub fn clear_missing_cache(&self) {

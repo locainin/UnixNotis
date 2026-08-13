@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
-use unixnotis_core::{InhibitorInfo, NotificationView, PanelDebugLevel};
+use unixnotis_core::{
+    InhibitorInfo, NotificationDiagnosticsView, NotificationView, PanelDebugLevel,
+};
 
 use super::super::client::{ControlClient, ControlFuture};
 
@@ -10,13 +12,16 @@ pub(super) enum RecordedCall {
     OpenPanel,
     OpenPanelDebug(PanelDebugLevel),
     ClosePanel,
+    RefreshApplications,
     ClearAll,
     ClearActive,
     ClearHistory,
     Dismiss(u32),
+    NotificationDiagnostics(u32),
     ListActive,
     ListHistory,
     SetDnd(bool),
+    SetDndUntil(i64),
     ToggleDnd,
     Inhibit { reason: String, scope: u32 },
     Uninhibit(u64),
@@ -78,6 +83,10 @@ impl ControlClient for RecordingControlClient {
         self.record(RecordedCall::ClosePanel, ())
     }
 
+    fn refresh_applications(&self) -> ControlFuture<'_, ()> {
+        self.record(RecordedCall::RefreshApplications, ())
+    }
+
     fn clear_all(&self) -> ControlFuture<'_, ()> {
         self.record(RecordedCall::ClearAll, ())
     }
@@ -94,6 +103,19 @@ impl ControlClient for RecordingControlClient {
         self.record(RecordedCall::Dismiss(id), ())
     }
 
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>> {
+        self.record(
+            RecordedCall::NotificationDiagnostics(id),
+            vec![NotificationDiagnosticsView {
+                id,
+                ..NotificationDiagnosticsView::default()
+            }],
+        )
+    }
+
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>> {
         self.record(RecordedCall::ListActive, Vec::new())
     }
@@ -104,6 +126,10 @@ impl ControlClient for RecordingControlClient {
 
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()> {
         self.record(RecordedCall::SetDnd(enabled), ())
+    }
+
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()> {
+        self.record(RecordedCall::SetDndUntil(expires_at), ())
     }
 
     fn toggle_dnd(&self) -> ControlFuture<'_, ()> {

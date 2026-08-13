@@ -9,11 +9,9 @@ mod backends;
 pub mod contract;
 mod orchestration;
 
-pub use contract::{
-    managed_directory_marker, managed_directory_marker_is_valid, MANAGED_DIRECTORY_MARKER_CONTENTS,
-};
+pub use contract::MANAGED_DIRECTORY_MARKER_CONTENTS;
 pub use contract::{
     CommandSpec, ReadinessIssue, S6DatabaseRefresh, ServiceArtifact, ServiceArtifactKind,
-    ServiceArtifactRefresh,
+    ServiceArtifactRefresh, ServiceArtifactState,
 };
 pub use orchestration::ServiceManager;

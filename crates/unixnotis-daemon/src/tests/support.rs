@@ -6,10 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use unixnotis_core::Config;
 use zbus::Connection;
 
-use crate::daemon::DaemonState;
+use crate::daemon::{DaemonState, DesktopIdentityIndex};
 use crate::sound::SoundSettings;
 use crate::store::NotificationStore;
 
@@ -18,18 +19,33 @@ pub fn env_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("env lock should not be poisoned")
+        // A failed subprocess test must not make every later environment test fail
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 pub async fn daemon_state_for_test(trial_mode: bool) -> Arc<DaemonState> {
+    daemon_state_for_test_with_owner(trial_mode, None).await
+}
+
+pub async fn daemon_state_for_test_with_owner(
+    trial_mode: bool,
+    control_owner: Option<&str>,
+) -> Arc<DaemonState> {
     // Signal-heavy daemon tests only need a session connection and default state
     let connection = Connection::session()
         .await
         .expect("session bus should be available for daemon signal tests");
     let config = Config::default();
-    let sound = SoundSettings::from_config(&config);
+    let sound = SoundSettings::from_config(&config, None);
     let store = NotificationStore::new_with_state_store(config, None);
-    DaemonState::new_with_store(connection, store, sound, trial_mode)
+    DaemonState::new_with_store(
+        connection,
+        store,
+        sound,
+        trial_mode,
+        Arc::new(ArcSwap::from_pointee(DesktopIdentityIndex::default())),
+        control_owner.map(str::to_owned),
+    )
 }
 
 pub struct EnvVarGuard {

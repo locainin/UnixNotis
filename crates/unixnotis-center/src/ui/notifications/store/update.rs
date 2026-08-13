@@ -3,7 +3,6 @@
 //! Keeps list-store mutation logic separate from data mutation methods
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Not;
 use std::rc::Rc;
 
 use gio::prelude::ListModelExt;
@@ -15,6 +14,7 @@ use tracing::debug;
 use super::blocks;
 use super::types::{GroupRange, NotificationList, RowKey};
 use super::RowItem;
+use crate::ui::notifications::row::empty::update_empty_row;
 
 impl NotificationList {
     pub fn flush_rebuild(&mut self) {
@@ -253,7 +253,7 @@ impl NotificationList {
             })
             .count();
         if range_count_mismatch(self.group_ranges.len(), expected_ranges) {
-            // Missing ranges leave later stack edits dependent on a full expand/collapse rebuild
+            // Missing ranges leave later group edits dependent on a full expand/collapse rebuild
             debug!(
                 expected_ranges,
                 actual_ranges = self.group_ranges.len(),
@@ -276,11 +276,19 @@ impl NotificationList {
     }
 
     fn group_ids_are_visible(&self, ids: &[u32]) -> bool {
-        self.visible_ids_for_group(ids).is_empty().not()
+        !self.visible_ids_for_group(ids).is_empty()
     }
 
-    fn update_empty_overlay(&self) {
+    pub(in crate::ui::notifications) fn update_empty_overlay(&self) {
         let is_empty = self.store.n_items() == 0;
+        let counts = self.notification_counts();
+        let text = if counts.filter_active && counts.total > 0 && counts.matching == 0 {
+            &self.no_matching_text
+        } else {
+            &self.empty_text
+        };
+        // Search with existing notifications needs different feedback from a truly empty list
+        update_empty_row(&self.empty_overlay, text);
         // Compare against the widget's own visible flag
         // Effective visibility can flip with parent state and leave the overlay logically stale
         if self.empty_overlay.get_visible() != is_empty {
@@ -298,7 +306,7 @@ const fn has_pending_items(count: usize) -> bool {
 }
 
 const fn range_count_mismatch(actual: usize, expected: usize) -> bool {
-    actual.abs_diff(expected) > 0
+    actual != expected
 }
 
 fn intern_key_is_live(key: &Rc<str>) -> bool {

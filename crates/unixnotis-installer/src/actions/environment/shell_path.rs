@@ -5,9 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
+use unixnotis_core::filesystem::write_file_atomic_preserving_mode;
 
 use crate::paths::format_with_home;
-use crate::safe_write::{reject_unsafe_write_target, write_text_preserving_mode};
+use crate::write_target::reject_unsafe_write_target;
 
 use super::super::{log_line, ActionContext};
 
@@ -129,11 +130,6 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
         return Ok(false);
     }
 
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| anyhow!("failed to create {}: {}", parent.display(), err))?;
-    }
-
     let export_line = format!(
         "export PATH=\"{}:$PATH\"",
         format_path_for_shell_line(home, bin_dir)
@@ -147,7 +143,7 @@ pub(in crate::actions::environment) fn ensure_path_entry_in_file(
     updated.push_str(&export_line);
     updated.push('\n');
 
-    write_text_preserving_mode(file, &updated, 0o644)
+    write_file_atomic_preserving_mode(file, updated.as_bytes(), 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }
@@ -212,7 +208,7 @@ pub(in crate::actions::environment) fn remove_path_entry_from_file(
     }
 
     // Write the cleaned startup file back to disk
-    write_text_preserving_mode(file, &updated, 0o644)
+    write_file_atomic_preserving_mode(file, updated.as_bytes(), 0o644)
         .map_err(|err| anyhow!("failed to write {}: {}", file.display(), err))?;
     Ok(true)
 }
@@ -246,18 +242,17 @@ pub(in crate::actions::environment) fn format_path_for_shell_line(
     bin_dir: &Path,
 ) -> String {
     // Prefer `$HOME` when possible so startup files stay portable across usernames
-    if let Ok(stripped) = bin_dir.strip_prefix(home) {
-        let tail = stripped.to_string_lossy();
-
-        // If the bin directory is exactly the home directory, `$HOME` alone is enough
-        if tail.is_empty() {
-            "$HOME".to_string()
-        } else {
-            // Convert the home-relative suffix into a shell-friendly `$HOME/...` path
-            format!("$HOME/{}", tail.trim_start_matches('/'))
-        }
-    } else {
-        // Fall back to the absolute path when the bin directory is outside home
-        bin_dir.display().to_string()
-    }
+    bin_dir.strip_prefix(home).map_or_else(
+        |_error| bin_dir.display().to_string(),
+        |stripped| {
+            let tail = stripped.to_string_lossy();
+            // `$HOME` alone covers the exact home directory
+            if tail.is_empty() {
+                "$HOME".to_string()
+            } else {
+                // The home-relative suffix keeps startup files portable across usernames
+                format!("$HOME/{}", tail.trim_start_matches('/'))
+            }
+        },
+    )
 }

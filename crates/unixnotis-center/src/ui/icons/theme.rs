@@ -9,7 +9,7 @@ use gio::prelude::FileExt;
 use gtk::gdk;
 use gtk::prelude::*;
 use gtk::{IconLookupFlags, IconPaintable, TextDirection};
-use unixnotis_core::{NotificationImage, NotificationView};
+use unixnotis_core::{AttributionStatus, ImageData, NotificationImage, NotificationView};
 
 pub(super) enum IconSource {
     Paintable(IconPaintable),
@@ -35,23 +35,6 @@ pub(super) fn resolve_icon_source(name: &str, size: i32, scale: i32) -> Option<I
 
     // Fallback: keep the paintable (covers SVGs, non-file paintables, and theme backends)
     Some(IconSource::Paintable(paintable))
-}
-
-pub(super) fn file_path_from_hint(path: &str) -> Option<PathBuf> {
-    // Accept raw absolute paths and file:// URIs, decoding percent escapes when present
-    if path.starts_with('/') {
-        return Some(PathBuf::from(path));
-    }
-    if path.starts_with("file://") {
-        // gio::File handles URI decoding and local filesystem resolution
-        let file = gio::File::for_uri(path);
-        // Only accept native filesystem paths to avoid non-local URIs
-        if !file.is_native() {
-            return None;
-        }
-        return file.path();
-    }
-    None
 }
 
 fn worker_decodes_theme_path(path: &Path) -> bool {
@@ -95,19 +78,16 @@ fn resolve_icon_paintable(name: &str, size: i32, scale: i32) -> Option<IconPaint
 }
 
 pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if !notification.image.icon_name.is_empty() {
-        candidates.push(notification.image.icon_name.clone());
-        if let Some(stripped) = notification.image.icon_name.strip_suffix(".desktop") {
-            candidates.push(stripped.to_string());
-        }
-        candidates.push(notification.image.icon_name.to_lowercase());
-    }
-    if !notification.app_name.is_empty() {
-        candidates.push(notification.app_name.clone());
-        let lower = notification.app_name.to_lowercase();
-        candidates.push(lower.clone());
-        candidates.push(lower.replace(' ', "-"));
+    let mut candidates = Vec::with_capacity(12);
+
+    // Presentation claims come first only when attribution is unresolved
+    // This keeps a generic daemon badge from hiding a useful bounded app hint
+    if notification.attribution.status == AttributionStatus::Unresolved {
+        push_claimed_icon_candidates(&mut candidates, notification);
+        push_attributed_icon_candidates(&mut candidates, notification);
+    } else {
+        push_attributed_icon_candidates(&mut candidates, notification);
+        push_claimed_icon_candidates(&mut candidates, notification);
     }
 
     let mut seen = HashSet::new();
@@ -115,6 +95,53 @@ pub(super) fn collect_icon_candidates(notification: &NotificationView) -> Vec<St
         .into_iter()
         .filter(|candidate| !candidate.is_empty() && seen.insert(candidate.clone()))
         .collect()
+}
+
+fn push_attributed_icon_candidates(candidates: &mut Vec<String>, notification: &NotificationView) {
+    let badge_icon = notification.attribution.badge_icon.as_str();
+    if !badge_icon.is_empty() {
+        candidates.push(badge_icon.to_string());
+        if let Some(stripped) = badge_icon.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(badge_icon.to_lowercase());
+    }
+
+    let desktop_id = notification.attribution.desktop_id.as_str();
+    if !desktop_id.is_empty() {
+        candidates.push(desktop_id.to_string());
+        if let Some(stripped) = desktop_id.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(desktop_id.to_lowercase());
+    }
+}
+
+fn push_claimed_icon_candidates(candidates: &mut Vec<String>, notification: &NotificationView) {
+    // A desktop-entry hint stays decorative and never changes attribution
+    let claimed_desktop_id = notification.image.claimed_desktop_id.as_str();
+    if is_safe_theme_name(claimed_desktop_id) {
+        candidates.push(claimed_desktop_id.to_string());
+        if let Some(stripped) = claimed_desktop_id.strip_suffix(".desktop") {
+            candidates.push(stripped.to_string());
+        }
+        candidates.push(claimed_desktop_id.to_lowercase());
+    }
+
+    let claimed_theme_icon = notification.image.claimed_theme_icon.as_str();
+    if is_safe_theme_name(claimed_theme_icon) {
+        candidates.push(claimed_theme_icon.to_string());
+        candidates.push(claimed_theme_icon.to_lowercase());
+    }
+}
+
+fn is_safe_theme_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.starts_with('.')
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        })
 }
 
 fn is_missing_icon(path: &Path) -> bool {
@@ -128,12 +155,14 @@ fn is_missing_icon(path: &Path) -> bool {
 
 pub(super) fn image_data_texture(image: &NotificationImage) -> Option<gdk::Texture> {
     // Only proceed if the notification actually carried image-data (not just a name/path hint)
-    if !image.has_image_data {
+    if image.content_image.data.is_empty() {
         return None;
     }
 
-    let data = &image.image_data;
+    image_data_texture_for_data(&image.content_image)
+}
 
+pub(super) fn image_data_texture_for_data(data: &ImageData) -> Option<gdk::Texture> {
     // The standard image-data payload for notifications is typically 8 bits per channel
     // If it's not 8, the byte layout is ambiguous for this path, so reject it
     if data.bits_per_sample != 8 {

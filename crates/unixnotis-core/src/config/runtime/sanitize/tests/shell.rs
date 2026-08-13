@@ -52,12 +52,12 @@ fn write_fake_program(dir: &std::path::Path, name: &str) {
 
 fn config_without_shell_commands() -> Config {
     let mut config = Config::default();
-    config.widgets.volume.get_cmd = "volume-get".to_string();
-    config.widgets.volume.set_cmd = "volume-set {value}".to_string();
+    config.widgets.volume.get_cmd = CommandSpec::direct("volume-get", [] as [&str; 0]);
+    config.widgets.volume.set_cmd = CommandSpec::direct("volume-set", ["{value}"]);
     config.widgets.volume.toggle_cmd = None;
     config.widgets.volume.watch_cmd = None;
-    config.widgets.brightness.get_cmd = "brightness-get".to_string();
-    config.widgets.brightness.set_cmd = "brightness-set {value}".to_string();
+    config.widgets.brightness.get_cmd = CommandSpec::direct("brightness-get", [] as [&str; 0]);
+    config.widgets.brightness.set_cmd = CommandSpec::direct("brightness-set", ["{value}"]);
     config.widgets.brightness.toggle_cmd = None;
     config.widgets.brightness.watch_cmd = None;
     config.widgets.toggles.clear();
@@ -68,15 +68,23 @@ fn config_without_shell_commands() -> Config {
 
 #[test]
 fn command_requires_shell_accepts_plain_commands_and_placeholders() {
-    // The slider placeholder is replaced before shell-character checks run
-    assert!(!command_requires_shell("notify-send hello"));
-    assert!(!command_requires_shell("wpctl set-volume sink {value}%"));
-    assert!(!command_requires_shell("   "));
+    assert!(!command_requires_shell(&CommandSpec::direct(
+        "notify-send",
+        ["hello"]
+    )));
+    assert!(!command_requires_shell(&CommandSpec::direct(
+        "wpctl",
+        ["set-volume", "sink", "{value}%"]
+    )));
+    assert!(!command_requires_shell(&CommandSpec::direct(
+        "",
+        [] as [&str; 0]
+    )));
 }
 
 #[test]
 fn command_requires_shell_rejects_shell_syntax() {
-    for command in [
+    for script in [
         "echo hi | wc -l",
         "echo hi && echo bye",
         "echo > file",
@@ -84,8 +92,8 @@ fn command_requires_shell_rejects_shell_syntax() {
         "echo ~/file",
     ] {
         assert!(
-            command_requires_shell(command),
-            "command should need shell: {command}"
+            command_requires_shell(&CommandSpec::shell(script)),
+            "command should need shell: {script}"
         );
     }
 }
@@ -93,12 +101,13 @@ fn command_requires_shell_rejects_shell_syntax() {
 #[test]
 fn optional_command_requires_shell_only_when_present_and_complex() {
     assert!(!command_requires_shell_opt(&None));
-    assert!(!command_requires_shell_opt(&Some(
-        "notify-send hi".to_string()
-    )));
-    assert!(command_requires_shell_opt(&Some(
-        "notify-send hi | cat".to_string()
-    )));
+    assert!(!command_requires_shell_opt(&Some(CommandSpec::direct(
+        "notify-send",
+        ["hi"]
+    ))));
+    assert!(command_requires_shell_opt(&Some(CommandSpec::shell(
+        "notify-send hi | cat"
+    ))));
 }
 
 #[test]
@@ -107,7 +116,7 @@ fn config_requires_shell_checks_volume_and_brightness_commands() {
     assert!(config_requires_shell(&Config {
         widgets: crate::WidgetsConfig {
             volume: SliderWidgetConfig {
-                get_cmd: "echo volume | cat".to_string(),
+                get_cmd: CommandSpec::shell("echo volume | cat"),
                 ..config.widgets.volume.clone()
             },
             ..config.widgets.clone()
@@ -115,28 +124,33 @@ fn config_requires_shell_checks_volume_and_brightness_commands() {
         ..config.clone()
     }));
 
-    config.widgets.brightness.set_cmd = "brightnessctl s {value}% && notify-send done".to_string();
+    config.widgets.brightness.set_cmd =
+        CommandSpec::shell("brightnessctl s {value}% && notify-send done");
     assert!(config_requires_shell(&config));
 }
 
 #[test]
 fn config_requires_shell_checks_each_slider_command_branch() {
     let slider_cases: [fn(&mut Config); 8] = [
-        |config: &mut Config| config.widgets.volume.get_cmd = "echo get | cat".to_string(),
-        |config: &mut Config| config.widgets.volume.set_cmd = "echo set | cat".to_string(),
+        |config: &mut Config| config.widgets.volume.get_cmd = CommandSpec::shell("echo get | cat"),
+        |config: &mut Config| config.widgets.volume.set_cmd = CommandSpec::shell("echo set | cat"),
         |config: &mut Config| {
-            config.widgets.volume.toggle_cmd = Some("echo toggle | cat".to_string());
+            config.widgets.volume.toggle_cmd = Some(CommandSpec::shell("echo toggle | cat"));
         },
         |config: &mut Config| {
-            config.widgets.volume.watch_cmd = Some("echo watch | cat".to_string());
-        },
-        |config: &mut Config| config.widgets.brightness.get_cmd = "echo bget | cat".to_string(),
-        |config: &mut Config| config.widgets.brightness.set_cmd = "echo bset | cat".to_string(),
-        |config: &mut Config| {
-            config.widgets.brightness.toggle_cmd = Some("echo btoggle | cat".to_string());
+            config.widgets.volume.watch_cmd = Some(CommandSpec::shell("echo watch | cat"));
         },
         |config: &mut Config| {
-            config.widgets.brightness.watch_cmd = Some("echo bwatch | cat".to_string());
+            config.widgets.brightness.get_cmd = CommandSpec::shell("echo bget | cat");
+        },
+        |config: &mut Config| {
+            config.widgets.brightness.set_cmd = CommandSpec::shell("echo bset | cat");
+        },
+        |config: &mut Config| {
+            config.widgets.brightness.toggle_cmd = Some(CommandSpec::shell("echo btoggle | cat"));
+        },
+        |config: &mut Config| {
+            config.widgets.brightness.watch_cmd = Some(CommandSpec::shell("echo bwatch | cat"));
         },
     ];
 
@@ -155,7 +169,7 @@ fn config_requires_shell_checks_each_slider_command_branch() {
 fn config_requires_shell_checks_toggle_commands() {
     let mut config = Config::default();
     config.widgets.toggles = vec![ToggleWidgetConfig {
-        toggle_cmd: Some("echo toggle | cat".to_string()),
+        toggle_cmd: Some(CommandSpec::shell("echo toggle | cat")),
         ..ToggleWidgetConfig::default()
     }];
 
@@ -165,11 +179,19 @@ fn config_requires_shell_checks_toggle_commands() {
 #[test]
 fn config_requires_shell_checks_each_toggle_command_branch() {
     let toggle_cases: [fn(&mut ToggleWidgetConfig); 5] = [
-        |toggle: &mut ToggleWidgetConfig| toggle.state_cmd = Some("echo state | cat".to_string()),
-        |toggle: &mut ToggleWidgetConfig| toggle.toggle_cmd = Some("echo toggle | cat".to_string()),
-        |toggle: &mut ToggleWidgetConfig| toggle.on_cmd = Some("echo on | cat".to_string()),
-        |toggle: &mut ToggleWidgetConfig| toggle.off_cmd = Some("echo off | cat".to_string()),
-        |toggle: &mut ToggleWidgetConfig| toggle.watch_cmd = Some("echo watch | cat".to_string()),
+        |toggle: &mut ToggleWidgetConfig| {
+            toggle.state_cmd = Some(CommandSpec::shell("echo state | cat"));
+        },
+        |toggle: &mut ToggleWidgetConfig| {
+            toggle.toggle_cmd = Some(CommandSpec::shell("echo toggle | cat"));
+        },
+        |toggle: &mut ToggleWidgetConfig| toggle.on_cmd = Some(CommandSpec::shell("echo on | cat")),
+        |toggle: &mut ToggleWidgetConfig| {
+            toggle.off_cmd = Some(CommandSpec::shell("echo off | cat"));
+        },
+        |toggle: &mut ToggleWidgetConfig| {
+            toggle.watch_cmd = Some(CommandSpec::shell("echo watch | cat"));
+        },
     ];
 
     for make_shell_command in toggle_cases {
@@ -188,7 +210,7 @@ fn config_requires_shell_checks_each_toggle_command_branch() {
 fn config_requires_shell_checks_stat_and_card_commands_and_plugins() {
     let mut stat_config = config_without_shell_commands();
     stat_config.widgets.stats = vec![StatWidgetConfig {
-        cmd: Some("echo stat | cat".to_string()),
+        cmd: Some(CommandSpec::shell("echo stat | cat")),
         ..StatWidgetConfig::default()
     }];
     assert!(config_requires_shell(&stat_config));
@@ -196,7 +218,7 @@ fn config_requires_shell_checks_stat_and_card_commands_and_plugins() {
     let mut stat_plugin = config_without_shell_commands();
     stat_plugin.widgets.stats = vec![StatWidgetConfig {
         plugin: Some(WidgetPluginConfig {
-            command: "echo stat-plugin | cat".to_string(),
+            command: CommandSpec::shell("echo stat-plugin | cat"),
             ..WidgetPluginConfig::default()
         }),
         ..StatWidgetConfig::default()
@@ -205,7 +227,7 @@ fn config_requires_shell_checks_stat_and_card_commands_and_plugins() {
 
     let mut card_config = config_without_shell_commands();
     card_config.widgets.cards = vec![CardWidgetConfig {
-        cmd: Some("echo card | cat".to_string()),
+        cmd: Some(CommandSpec::shell("echo card | cat")),
         ..CardWidgetConfig::default()
     }];
     assert!(config_requires_shell(&card_config));
@@ -213,7 +235,7 @@ fn config_requires_shell_checks_stat_and_card_commands_and_plugins() {
     let mut card_plugin = config_without_shell_commands();
     card_plugin.widgets.cards = vec![CardWidgetConfig {
         plugin: Some(WidgetPluginConfig {
-            command: "echo card-plugin | cat".to_string(),
+            command: CommandSpec::shell("echo card-plugin | cat"),
             ..WidgetPluginConfig::default()
         }),
         ..CardWidgetConfig::default()
@@ -231,7 +253,7 @@ fn warn_missing_shell_reports_only_when_shell_is_missing_and_needed() {
     let previous = set_path(&root);
     let mut config = Config::default();
     config.widgets.toggles = vec![ToggleWidgetConfig {
-        toggle_cmd: Some("echo toggle | cat".to_string()),
+        toggle_cmd: Some(CommandSpec::shell("echo toggle | cat")),
         ..ToggleWidgetConfig::default()
     }];
     config.widgets.stats.clear();

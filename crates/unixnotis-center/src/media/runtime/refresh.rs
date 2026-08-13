@@ -31,6 +31,8 @@ pub(super) async fn refresh_all_players(
         config,
         signal_tx,
         &mut state.players,
+        &mut state.discovery_cursor,
+        &mut state.mpris_fairness,
     )
     .await
     {

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Consume the request so the parent can finish writing before the timeout
+cat >/dev/null
+sleep 2

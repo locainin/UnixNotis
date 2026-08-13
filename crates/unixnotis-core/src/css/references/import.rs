@@ -1,7 +1,7 @@
 //! Decoded CSS `@import` discovery
 
 use super::lexer::{
-    consume_escape, consume_identifier, skip_comment, skip_css_whitespace_and_comments,
+    consume_escape, identifier_matches, skip_comment, skip_css_whitespace_and_comments,
     skip_quoted_value, starts_comment, utf8_char_len, would_start_identifier,
 };
 use super::url::{parse_url_value, MAX_CSS_REFERENCES_PER_FILE};
@@ -86,8 +86,8 @@ fn collect_import_records(css_text: &str) -> Result<Vec<ImportRecord>, CssRefere
         }
 
         // At-keyword names follow the same escape rules as function identifiers
-        let (name, name_end) = consume_identifier(css_text, index.saturating_add(1));
-        if !name.eq_ignore_ascii_case("import") {
+        let (is_import, name_end) = identifier_matches(css_text, index.saturating_add(1), "import");
+        if !is_import {
             if name_end <= index {
                 return Err(CssReferenceError::ScannerDidNotAdvance);
             }
@@ -125,8 +125,8 @@ fn parse_import_value(
     let mut index = skip_css_whitespace_and_comments(bytes, start);
 
     if would_start_identifier(bytes, index) {
-        let (name, name_end) = consume_identifier(input, index);
-        if name.eq_ignore_ascii_case("url") && bytes.get(name_end) == Some(&b'(') {
+        let (is_url, name_end) = identifier_matches(input, index, "url");
+        if is_url && bytes.get(name_end) == Some(&b'(') {
             let Some((span, next_index)) = parse_url_value(input, name_end.saturating_add(1))
             else {
                 return (Some(CssImportReference::Ambiguous), None, bytes.len());

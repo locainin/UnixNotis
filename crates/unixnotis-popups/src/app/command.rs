@@ -11,7 +11,10 @@ use glib::MainContext;
 use gtk::prelude::*;
 use tracing::{info, warn};
 use unixnotis_core::Config;
-use unixnotis_ui::css::{self, CssKind};
+use unixnotis_ui::{
+    css::{self, CssKind},
+    presentation::register_semantic_badges,
+};
 
 use crate::{dbus, ui};
 
@@ -30,6 +33,7 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    register_semantic_badges().map_err(anyhow::Error::msg)?;
     // Load and validate config before GTK starts so startup failures stay clear
     let (config, config_path, config_source) = load_config(&args).context("load config")?;
     init_tracing(&config);
@@ -54,9 +58,7 @@ pub fn run(args: Args) -> Result<()> {
     let theme_paths = config
         .resolve_theme_paths_from(&theme_base)
         .context("resolve theme paths")?;
-    config
-        .ensure_theme_files(&theme_paths)
-        .context("ensure theme files")?;
+    // Popup startup never creates or migrates user-editable theme files
 
     let app = gtk::Application::new(Some("com.unixnotis.Popups"), Default::default());
     // Activation can happen more than once in one process, so runtime setup
@@ -72,7 +74,12 @@ pub fn run(args: Args) -> Result<()> {
 
         // Bound the queue so a stalled UI cannot grow memory forever
         let (event_tx, event_rx) = async_channel::bounded(UI_EVENT_QUEUE_CAPACITY);
-        let command_tx = dbus::start_dbus_runtime(event_tx.clone());
+        let dbus_runtime = dbus::start_dbus_runtime(event_tx.clone());
+        let command_tx = dbus_runtime.command_sender();
+        let shutdown = dbus_runtime.clone();
+        app.connect_shutdown(move |_| {
+            shutdown.request_shutdown();
+        });
         let reload_gate = Arc::new(ReloadGate::new());
         // Timer state keeps only one flush source alive at a time
         let reload_timer = Arc::new(Mutex::new(None::<glib::SourceId>));
@@ -89,6 +96,9 @@ pub fn run(args: Args) -> Result<()> {
             command_tx,
             css_manager,
         )));
+        ui.borrow_mut().set_popup_event_sender(event_tx.clone());
+        // Composite readiness now means GTK state exists as well as D-Bus seeding succeeding
+        dbus_runtime.mark_gtk_ready();
 
         let ui_clone = ui;
         let reload_gate_loop = Arc::clone(&reload_gate);

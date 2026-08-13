@@ -73,6 +73,45 @@ fn read_bundle_uses_effective_pax_size_for_payload_limits() {
 }
 
 #[test]
+fn read_bundle_rejects_global_pax_metadata_before_second_pass() {
+    let root = TempDirGuard::new("global-pax-metadata");
+    let bundle_path = root.path.join("demo.unixnotis");
+    let pax = pax_record("path", "manifest.toml");
+
+    write_raw_gzip_tar(&bundle_path, |encoder| {
+        append_extension_entry(encoder, tar::EntryType::XGlobalHeader, &pax);
+        append_raw_tar_file(encoder, Path::new("ignored-name"), b"", 0o644);
+    });
+
+    let error = read_bundle(&bundle_path).expect_err("global PAX state must be rejected");
+
+    assert!(error.to_string().contains("global PAX metadata"));
+}
+
+#[test]
+fn read_bundle_rejects_unmodeled_archive_entry_types_during_preflight() {
+    let root = TempDirGuard::new("unsupported-archive-entry");
+    let bundle_path = root.path.join("demo.unixnotis");
+
+    write_raw_gzip_tar(&bundle_path, |encoder| {
+        let mut header = tar::Header::new_gnu();
+        header.set_path("foreign-link").expect("set link path");
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_link_name("target").expect("set link target");
+        header.set_mode(0o777);
+        header.set_size(0);
+        header.set_cksum();
+        encoder
+            .write_all(header.as_bytes())
+            .expect("write unsupported entry");
+    });
+
+    let error = read_bundle(&bundle_path).expect_err("unmodeled entry type must be rejected");
+
+    assert!(error.to_string().contains("unsupported archive entry type"));
+}
+
+#[test]
 fn read_bundle_accepts_a_bounded_pax_size_override() {
     let root = TempDirGuard::new("bounded-pax-size-override");
     let bundle_path = root.path.join("demo.unixnotis");

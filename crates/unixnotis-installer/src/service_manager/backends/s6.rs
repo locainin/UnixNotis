@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use crate::system_tools;
 
 use super::super::contract::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path, CommandSpec, ReadinessIssue, S6DatabaseRefresh, ServiceArtifact,
-    ServiceArtifactKind, ServiceArtifactRefresh, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
+    ReadinessIssue, S6DatabaseRefresh, ServiceArtifact, ServiceArtifactKind,
+    ServiceArtifactRefresh, ServiceProbe, ServiceProbeOutput, ServiceProbeState,
+    MANAGED_DIRECTORY_MARKER,
 };
 
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -71,11 +72,6 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub const fn availability_command() -> Option<CommandSpec> {
-    // s6 readiness needs several tools and paths, so readiness_issues owns validation
-    None
-}
-
 pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is source-backed through the default bundle membership file
     None
@@ -91,7 +87,7 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && is_regular_file(&default_bundle_member(artifact_root))
 }
 
-pub fn active_probe(live_dir: &Path) -> Option<ServiceProbe> {
+pub fn active_probe(live_dir: &Path) -> ServiceProbe {
     let service = live_service_dir(live_dir).display().to_string();
     // s6-svstat -o up is machine-readable and avoids parsing human status text
     let command = CommandSpec::new(
@@ -99,64 +95,42 @@ pub fn active_probe(live_dir: &Path) -> Option<ServiceProbe> {
         "s6-svstat",
         ["-o".to_string(), "up".to_string(), service],
     );
-    Some(ServiceProbe::stdout(command, status_output_is_running))
+    ServiceProbe::new(command, interpret_active_state)
 }
 
 pub fn refresh_after_artifact_change(
     artifact_root: &Path,
     live_dir: &Path,
-) -> Option<ServiceArtifactRefresh> {
+) -> ServiceArtifactRefresh {
     // s6 source changes must be compiled into a database before s6-rc can see them
-    Some(ServiceArtifactRefresh::S6Database(S6DatabaseRefresh::new(
+    ServiceArtifactRefresh::S6Database(S6DatabaseRefresh::new(
         artifact_root.to_path_buf(),
         live_dir.to_path_buf(),
-    )))
+    ))
 }
 
-pub fn enable_now_command(live_dir: &Path) -> Option<CommandSpec> {
+pub fn enable_now_command(live_dir: &Path) -> CommandSpec {
     start_command(live_dir)
 }
 
-pub fn start_command(live_dir: &Path) -> Option<CommandSpec> {
-    Some(s6_rc_change_command(live_dir, "-u"))
+pub fn start_command(live_dir: &Path) -> CommandSpec {
+    s6_rc_change_command(live_dir, "-u")
 }
 
-pub fn disable_now_command(live_dir: &Path) -> Option<CommandSpec> {
-    Some(s6_rc_change_command(live_dir, "-d"))
+pub fn disable_now_command(live_dir: &Path) -> CommandSpec {
+    s6_rc_change_command(live_dir, "-d")
 }
 
-pub fn stop_for_reinstall_command(live_dir: &Path) -> Option<CommandSpec> {
+pub fn stop_for_reinstall_command(live_dir: &Path) -> CommandSpec {
     disable_now_command(live_dir)
 }
 
 pub fn hyprland_startup_commands(
-    artifact_root: &Path,
-    live_dir: &Path,
-    import_vars: &[&str],
+    _artifact_root: &Path,
+    _live_dir: &Path,
+    _import_vars: &[&str],
 ) -> Vec<String> {
-    let env_dir = service_dir(artifact_root).join(ENV_DIR);
-    let live_service = live_service_dir(live_dir);
-    // Hyprland uses one exec-once line, so every shell step must be fail-closed
-    let mut steps = envdir_sync_prelude(&env_dir);
-    for var in import_vars
-        .iter()
-        .copied()
-        .filter(|name| is_s6_envdir_name(name))
-    {
-        // Missing session vars intentionally become empty envdir files
-        steps.push(render_envdir_shell_update(var));
-    }
-    steps.push(format!(
-        "s6-rc -l {} -u change {} || exit 1",
-        shell_quote_path(live_dir),
-        shell_quote(SERVICE_NAME)
-    ));
-    steps.push(format!(
-        "s6-svc -r {} || :",
-        shell_quote_path(&live_service)
-    ));
-    let script = steps.join("; ");
-    vec![format!("sh -lc {}", shell_quote(&script))]
+    vec!["noticenterctl sync-session-environment --service-manager s6".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {
@@ -326,6 +300,17 @@ fn is_directory_or_symlink_to_directory(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.is_dir())
 }
 
-fn status_output_is_running(stdout: &str) -> bool {
-    stdout.trim() == "true"
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    // s6 assigns exit one specifically to an absent s6-supervise process
+    if output.status_code() == Some(1) {
+        return ServiceProbeState::Absent;
+    }
+    if !output.status_success() {
+        return ServiceProbeState::Indeterminate;
+    }
+    match output.stdout().trim() {
+        "true" => ServiceProbeState::Active,
+        "false" => ServiceProbeState::Inactive,
+        _ => ServiceProbeState::Indeterminate,
+    }
 }

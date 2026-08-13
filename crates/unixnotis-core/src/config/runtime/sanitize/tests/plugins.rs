@@ -1,18 +1,17 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "sanitization assigns exact finite constants and test inputs"
 )]
 
 use super::super::super::super::widgets::WidgetPluginConfig;
 use super::super::*;
-use crate::Config;
+use crate::{CommandSpec, Config};
 
 #[test]
-fn sanitize_widget_plugin_clamps_bounds_and_trim_command() {
-    // Plugin commands should be trimmed and bounded before any worker runs them
+fn sanitize_widget_plugin_clamps_bounds_and_preserves_literal_arguments() {
     let mut config = Config::default();
     config.widgets.stats[0].plugin = Some(WidgetPluginConfig {
-        command: "  script arg  ".to_string(),
+        command: CommandSpec::direct("script", ["  literal arg  "]),
         timeout_ms: super::super::plugins::MAX_PLUGIN_TIMEOUT_MS + 1,
         max_output_bytes: super::super::plugins::MAX_PLUGIN_OUTPUT_BYTES + 10,
         ..WidgetPluginConfig::default()
@@ -23,7 +22,10 @@ fn sanitize_widget_plugin_clamps_bounds_and_trim_command() {
         .plugin
         .as_ref()
         .expect("plugin should remain enabled");
-    assert_eq!(plugin.command, "script arg");
+    assert_eq!(
+        plugin.command,
+        CommandSpec::direct("script", ["  literal arg  "])
+    );
     assert_eq!(
         plugin.timeout_ms,
         super::super::plugins::MAX_PLUGIN_TIMEOUT_MS
@@ -39,11 +41,45 @@ fn sanitize_widget_plugin_rejects_shell_meta_commands() {
     // Shell syntax is not allowed in the simple plugin command field
     let mut config = Config::default();
     config.widgets.cards[0].plugin = Some(WidgetPluginConfig {
-        command: "sh -c 'echo pwned | cat'".to_string(),
+        command: CommandSpec::shell("echo pwned | cat"),
         ..WidgetPluginConfig::default()
     });
     sanitize_config(&mut config);
     assert!(config.widgets.cards[0].plugin.is_none());
+}
+
+#[test]
+fn sanitize_widget_plugin_rejects_direct_shell_interpreters() {
+    let mut config = Config::default();
+    config.widgets.cards[0].plugin = Some(WidgetPluginConfig {
+        command: CommandSpec::direct("sh", ["-c", "printf unsafe"]),
+        ..WidgetPluginConfig::default()
+    });
+
+    sanitize_config(&mut config);
+
+    assert!(config.widgets.cards[0].plugin.is_none());
+}
+
+#[test]
+fn sanitize_widget_plugin_keeps_direct_shell_scripts_with_long_options() {
+    for (shell, option, script) in [
+        ("bash", "--norc", "script.sh"),
+        ("fish", "--no-config", "script.fish"),
+    ] {
+        let mut config = Config::default();
+        config.widgets.cards[0].plugin = Some(WidgetPluginConfig {
+            command: CommandSpec::direct(shell, [option, script]),
+            ..WidgetPluginConfig::default()
+        });
+
+        sanitize_config(&mut config);
+
+        assert!(
+            config.widgets.cards[0].plugin.is_some(),
+            "{shell} script plugins must remain enabled"
+        );
+    }
 }
 
 #[test]

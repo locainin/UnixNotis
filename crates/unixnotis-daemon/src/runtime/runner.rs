@@ -1,19 +1,53 @@
 //! Daemon runtime and trial cleanup coordination
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
+use arc_swap::ArcSwap;
+use zbus::connection::Builder;
 use zbus::fdo::DBusProxy;
-use zbus::Connection;
 
 use crate::cli::Args;
+use crate::daemon::{DesktopIdentityIndex, DesktopIndexSnapshot};
 use crate::trial_mode::{prepare_trial, TrialState};
-use unixnotis_core::{Config, NOTIFICATIONS_BUS_NAME};
+use unixnotis_core::{log_session_bus_identity, Config, NOTIFICATIONS_BUS_NAME};
 
 use super::{daemon, trial_cleanup};
 
+const DAEMON_DBUS_QUEUE_CAPACITY: usize = 16;
+
 pub async fn run(args: &Args, config: Config) -> Result<()> {
-    let connection = Connection::session()
+    let builder = Builder::session().context("create session bus connection")?;
+    Box::pin(run_with_builder(args, config, builder)).await
+}
+
+async fn run_with_builder(args: &Args, config: Config, builder: Builder<'_>) -> Result<()> {
+    Box::pin(run_with_builder_inner(args, config, builder, None)).await
+}
+
+async fn run_with_builder_inner(
+    args: &Args,
+    config: Config,
+    builder: Builder<'_>,
+    preauthorized_control_owner: Option<String>,
+) -> Result<()> {
+    let connection = builder
+        .max_queued(DAEMON_DBUS_QUEUE_CAPACITY)
+        .build()
         .await
         .context("connect to session bus")?;
+    log_session_bus_identity(&connection, "daemon")
+        .await
+        .context("read daemon session-bus identity")?;
+    // Finish the bounded filesystem scan before either well-known name can become visible
+    let desktop_index_snapshot = tokio::task::spawn_blocking(DesktopIdentityIndex::build_snapshot)
+        .await
+        .context("desktop identity index task failed")?;
+    let DesktopIndexSnapshot {
+        index: desktop_identity_index,
+        watched_directories,
+    } = desktop_index_snapshot;
+    let desktop_identity_index = Arc::new(ArcSwap::from_pointee(desktop_identity_index));
     let dbus_proxy = DBusProxy::new(&connection).await?;
     let notifications_name = zbus::names::BusName::try_from(NOTIFICATIONS_BUS_NAME)?;
     let mut trial_state = if trial_requested(args) {
@@ -28,7 +62,9 @@ pub async fn run(args: &Args, config: Config) -> Result<()> {
         config,
         &connection,
         &dbus_proxy,
-        notifications_name.clone(),
+        desktop_identity_index,
+        watched_directories,
+        preauthorized_control_owner,
     )
     .await;
     let restore_result = trial_cleanup::finish_trial(

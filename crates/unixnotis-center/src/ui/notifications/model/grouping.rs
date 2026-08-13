@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use super::types::{FilterQuery, NotificationList};
+use super::types::{FilterQuery, NotificationCounts, NotificationList};
 
 impl NotificationList {
     pub(in crate::ui::notifications) fn intern_key(&mut self, key: &str) -> Rc<str> {
@@ -21,7 +21,7 @@ impl NotificationList {
         &self,
         key: &'a str,
     ) -> Cow<'a, str> {
-        // Trim outer whitespace to avoid duplicate stacks from padded app names
+        // Trim outer whitespace to avoid duplicate groups from padded app names
         let trimmed = key.trim();
         if trimmed.is_empty() {
             return Cow::Borrowed("");
@@ -120,11 +120,40 @@ impl NotificationList {
         })
     }
 
-    fn entry_matches_filter(&self, view: &unixnotis_core::NotificationView) -> bool {
+    pub(in crate::ui) fn notification_counts(&self) -> NotificationCounts {
+        let total = self.total_count();
+        let Some(_) = self.filter_query.as_ref() else {
+            return NotificationCounts {
+                matching: total,
+                total,
+                filter_active: false,
+            };
+        };
+        // Count notifications rather than GTK rows because each group adds a header row
+        let matching = self
+            .active_order
+            .iter()
+            .chain(&self.history_order)
+            .filter_map(|id| self.entries.get(id))
+            .filter(|entry| self.entry_matches_filter(&entry.view))
+            .count();
+        NotificationCounts {
+            matching,
+            total,
+            filter_active: true,
+        }
+    }
+
+    pub(in crate::ui::notifications) fn entry_matches_filter(
+        &self,
+        view: &unixnotis_core::NotificationView,
+    ) -> bool {
         let Some(query) = self.filter_query.as_ref() else {
             return true;
         };
-        contains_casefold(&view.app_name, query)
+        contains_casefold(&view.attribution.display_name, query)
+            || contains_casefold(&view.attribution.claimed_name, query)
+            || contains_casefold(&view.attribution.diagnostic_detail, query)
             || contains_casefold(&view.summary, query)
             || contains_casefold(&view.body, query)
     }

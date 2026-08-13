@@ -1,4 +1,4 @@
-use crate::{CardLayout, CardWidgetConfig, WidgetPluginConfig, WidgetsConfig};
+use crate::{CardLayout, CardWidgetConfig, CommandSpec, WidgetPluginConfig, WidgetsConfig};
 
 #[test]
 fn default_card_widgets_keep_builtin_identity_and_layout() {
@@ -54,7 +54,7 @@ fn custom_card_layout_and_carousel_options_parse() {
         subtitle = "Live"
         icon = "image-x-generic-symbolic"
         icon_asset = "assets/card.webp"
-        cmd = "scripts/card"
+        cmd = { mode = "direct", program = "scripts/card" }
         min_height = 220
         monospace = true
         carousel_dots = 5
@@ -62,7 +62,7 @@ fn custom_card_layout_and_carousel_options_parse() {
 
         [plugin]
         api_version = 1
-        command = "scripts/card-plugin"
+        command = { mode = "direct", program = "scripts/card-plugin" }
         timeout_ms = 3000
         max_output_bytes = 4096
         "#,
@@ -76,7 +76,10 @@ fn custom_card_layout_and_carousel_options_parse() {
     assert_eq!(card.subtitle.as_deref(), Some("Live"));
     assert_eq!(card.icon.as_deref(), Some("image-x-generic-symbolic"));
     assert_eq!(card.icon_asset.as_deref(), Some("assets/card.webp"));
-    assert_eq!(card.cmd.as_deref(), Some("scripts/card"));
+    assert_eq!(
+        card.cmd,
+        Some(CommandSpec::direct("scripts/card", [] as [&str; 0]))
+    );
     assert_eq!(card.min_height, 220);
     assert!(card.monospace);
     assert_eq!(card.carousel_dots, 5);
@@ -85,7 +88,7 @@ fn custom_card_layout_and_carousel_options_parse() {
         card.plugin,
         Some(WidgetPluginConfig {
             api_version: 1,
-            command: "scripts/card-plugin".to_string(),
+            command: CommandSpec::direct("scripts/card-plugin", [] as [&str; 0]),
             timeout_ms: 3000,
             max_output_bytes: 4096,
         })

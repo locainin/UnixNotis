@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::super::command::handle_command;
-use super::super::player::{build_player_state, PlayerState};
-use super::support::{MprisFixture, TEST_PLAYER_NAME};
+use super::super::player::PlayerState;
+use super::support::{build_player_state, MprisFixture, TEST_PLAYER_NAME};
 use crate::media::MediaCommand;
 use unixnotis_core::MediaConfig;
 

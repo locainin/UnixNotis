@@ -6,17 +6,20 @@ use crate::test_support::fs::write_executable;
 
 #[test]
 fn trial_launch_script_guards_cleanup_with_expected_symlink_target() {
-    let script = trial_launch_script(
-        "'/tmp/unixnotis-daemon'",
-        "'/home/user/.local/bin/noticenterctl'",
-        "'/tmp/target/debug/noticenterctl'",
-    );
+    let root = crate::test_support::fs::unique_temp_path("trial-launch-script");
+    let daemon_path = root.join("unixnotis-daemon");
+    let shim_path = root.join("home").join(".local/bin/noticenterctl");
+    let target_path = root.join("target/debug/noticenterctl");
+    let daemon = shell_quote(&daemon_path.to_string_lossy());
+    let shim = shell_quote(&shim_path.to_string_lossy());
+    let target = shell_quote(&target_path.to_string_lossy());
+    let script = trial_launch_script(&daemon, &shim, &target);
 
     // Signal-time cleanup must not be a blind rm of whatever is at the shim path
-    assert!(script.contains("[ -L '/home/user/.local/bin/noticenterctl' ]"));
-    assert!(script.contains("readlink -- '/home/user/.local/bin/noticenterctl'"));
-    assert!(script.contains("= '/tmp/target/debug/noticenterctl'"));
-    assert!(script.contains("rm -f -- '/home/user/.local/bin/noticenterctl'"));
+    assert!(script.contains(&format!("[ -L {shim} ]")));
+    assert!(script.contains(&format!("readlink -- {shim}")));
+    assert!(script.contains(&format!("= {target}")));
+    assert!(script.contains(&format!("rm -f -- {shim}")));
 }
 
 #[test]

@@ -13,6 +13,6 @@ pub use self::defaults::{
     DEFAULT_MEDIA_ART_SIZE_PX, DEFAULT_MEDIA_TEXT_WIDTH_FLOOR_PX,
 };
 pub use self::types::{
-    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
-    MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
+    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaLocalArtPolicy,
+    MediaNavigationPosition, MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
 };

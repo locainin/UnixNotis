@@ -4,29 +4,21 @@
  */
 .unixnotis-panel {
   min-width: 420px;
-  /* Primary surface gradient.
-   * The last stop (panel-grad-3) is intentionally hotpink-leaning to create a
-   * bottom-right glow without changing any layout logic. */
-  background-image: linear-gradient(155deg, @unixnotis-panel-grad-1 0%, @unixnotis-panel-grad-2 55%, @unixnotis-panel-grad-3 100%);
+  background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
   color: @unixnotis-text;
-  border-radius: 30px;
   border-radius: var(--unixnotis-panel-radius);
-  padding: 16px;
   padding: var(--unixnotis-panel-padding);
-  border: 1px solid @unixnotis-outline;
+  border: 1px solid alpha(#9bb8e8, 0.16);
+  font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
   box-shadow:
-    0 28px 70px -38px @unixnotis-glow-cyan,
-    0 22px 60px -42px @unixnotis-glow-pink,
-    0 12px 28px -20px @unixnotis-shadow-soft,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    0 26px 64px -34px alpha(#000000, 0.88),
+    inset 0 1px 0 alpha(#ffffff, 0.035);
 }
 
 
 .unixnotis-panel-header {
   margin-bottom: 12px;
-  padding: 12px;
   padding: var(--unixnotis-panel-header-padding);
-  border-radius: 18px;
   border-radius: var(--unixnotis-panel-header-radius);
   background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.7), alpha(@unixnotis-surface, 0.9));
   border: 1px solid alpha(@unixnotis-accent, 0.16);
@@ -79,21 +71,20 @@
 .unixnotis-panel-title {
   font-weight: 700;
   font-size: 16px;
-  letter-spacing: 0.3px;
+  letter-spacing: -0.01em;
 }
 
 .unixnotis-panel-count {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.18));
-  color: @unixnotis-text;
+  background: alpha(@unixnotis-accent, 0.12);
+  color: #bffaf5;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   border-radius: 999px;
   padding: 2px 8px;
-  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  border: 1px solid alpha(@unixnotis-accent, 0.28);
   min-width: 26px;
-  /* Slight bloom improves readability over complex wallpapers. */
-  box-shadow: 0 0 12px -10px @unixnotis-glow-cyan;
+  box-shadow: none;
 }
 
 .unixnotis-panel-actions {
@@ -107,18 +98,18 @@
 }
 
 .unixnotis-panel-action {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  color: @unixnotis-text;
-  border-radius: 999px;
-  padding: 6px 10px;
+  background: alpha(#ffffff, 0.045);
+  color: alpha(#ffffff, 0.75);
+  border-radius: 10px;
   padding: var(--unixnotis-panel-action-gap) calc(var(--unixnotis-panel-action-gap) + 4px);
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   min-height: 28px;
-  box-shadow:
-    0 8px 16px -12px @unixnotis-shadow-soft,
-    0 0 18px -16px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   font-size: 11px;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-panel-action-focus,
@@ -160,8 +151,12 @@
 }
 
 .unixnotis-panel-action:hover {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
-  border-color: alpha(@unixnotis-accent, 0.5);
+  background: alpha(#ffffff, 0.08);
+  border-top: 1px solid alpha(#ffffff, 0.14);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.06);
+  border-bottom: 1px solid alpha(#ffffff, 0.04);
+  color: #ffffff;
   box-shadow:
     0 10px 18px -14px @unixnotis-shadow-soft,
     0 0 22px -18px @unixnotis-glow-cyan,
@@ -170,13 +165,14 @@
 }
 
 .unixnotis-panel-action:checked {
-  background-image: linear-gradient(140deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.3));
-  border-color: alpha(@unixnotis-accent, 0.75);
+  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
+  border: 1px solid alpha(#00a2ff, 0.50);
+  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
 }
 
 .unixnotis-panel-action:checked .unixnotis-panel-action-glyph,
 .unixnotis-panel-action:checked .unixnotis-panel-action-label {
-  color: @unixnotis-text;
+  color: #ffffff;
 }
 
 .unixnotis-panel-action-icon {
@@ -188,17 +184,89 @@
 .unixnotis-panel-action-close {
   /* Close action is visually isolated from destructive list actions. */
   margin-left: 6px;
-  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-strong, 0.88), alpha(@unixnotis-surface-soft, 0.84));
-  border-color: alpha(@unixnotis-accent, 0.26);
-  box-shadow:
-    0 8px 14px -12px @unixnotis-shadow-soft,
-    0 0 14px -14px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+  background: alpha(#ffffff, 0.045);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
 .unixnotis-panel-action-close:hover {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-action-bg-hover, 0.88), alpha(@unixnotis-accent-2, 0.18));
-  border-color: alpha(@unixnotis-accent, 0.58);
+  background: alpha(#fb7185, 0.16);
+  border-color: alpha(#fb7185, 0.45);
+  color: #fb7185;
+}
+
+/* The DND menu is a compact action list rather than a stack of stock buttons */
+.unixnotis-dnd-menu > contents {
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid alpha(#ffffff, 0.08);
+  background-color: @unixnotis-surface-base;
+  background-image: none;
+  box-shadow:
+    0 18px 38px -20px @unixnotis-shadow-strong,
+    inset 0 1px alpha(#ffffff, 0.025);
+}
+
+.unixnotis-dnd-menu-content {
+  min-width: 216px;
+  border-spacing: 2px;
+}
+
+.unixnotis-dnd-menu-title {
+  margin: 5px 9px 7px;
+  color: @unixnotis-muted;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: @unixnotis-text;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  text-shadow: none;
+  transition: background-color 0.1s ease-out, border-color 0.1s ease-out;
+}
+
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:hover,
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:focus-visible {
+  color: @unixnotis-text;
+  border-color: alpha(#ffffff, 0.07);
+  background-color: @unixnotis-card-base;
+  background-image: none;
+  box-shadow: none;
+}
+
+.unixnotis-dnd-menu .unixnotis-dnd-menu-choice:active {
+  border-color: alpha(#ffffff, 0.10);
+  background-color: @unixnotis-surface-strong-base;
+  background-image: none;
+  box-shadow: none;
+}
+
+.unixnotis-dnd-menu-choice-indefinite {
+  color: @unixnotis-text;
+}
+
+.unixnotis-dnd-menu-separator {
+  margin: 4px 9px 3px;
+  min-height: 1px;
+  background-color: alpha(#ffffff, 0.08);
 }
 
 .unixnotis-panel-search-revealer {
@@ -206,7 +274,6 @@
 }
 
 .unixnotis-panel-search {
-  min-height: 34px;
   min-height: var(--unixnotis-panel-search-min-height);
   border-radius: 12px;
   background: alpha(#000000, 0.4);
@@ -214,10 +281,21 @@
   border-left: 1px solid alpha(#ffffff, 0.04);
   border-right: 1px solid alpha(#ffffff, 0.02);
   border-bottom: 1px solid alpha(#ffffff, 0.01);
-  padding: 0 10px;
   padding: 0 var(--unixnotis-panel-search-padding-x);
   box-shadow: inset 0 1px 3px alpha(#000000, 0.5);
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.unixnotis-panel-search-magnifier {
+  min-width: 16px;
+  min-height: 16px;
+  color: @unixnotis-muted;
+}
+
+.unixnotis-panel-search-clear {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
 }
 
 .unixnotis-panel-search:focus-within {
@@ -234,15 +312,13 @@ entry selection {
 
 .unixnotis-panel-close {
   background: alpha(#ffffff, 0.045);
-  border-radius: 999px;
+  border-radius: 10px;
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
   padding: 2px;
-  min-width: 28px;
   min-width: var(--unixnotis-panel-close-size);
-  min-height: 28px;
   min-height: var(--unixnotis-panel-close-size);
   box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
   transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
@@ -255,8 +331,14 @@ entry selection {
   box-shadow: 0 0 8px alpha(#fb7185, 0.35);
 }
 
+.unixnotis-panel-close:focus-visible {
+  border-color: alpha(@unixnotis-accent, 0.45);
+  outline: none;
+}
+
 .unixnotis-panel-list {
   background: transparent;
+  padding-bottom: 20px;
 }
 
 .unixnotis-panel-list row {
@@ -270,21 +352,21 @@ entry selection {
  */
 .unixnotis-group {
   background: transparent;
-  margin-bottom: 8px;
 }
 
 .unixnotis-group-header {
-  background-image: linear-gradient(160deg, @unixnotis-pill-bg, alpha(@unixnotis-surface-soft, 0.86));
+  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
   color: @unixnotis-text;
   border-radius: 999px;
   padding: 6px 12px;
-  border: 1px solid @unixnotis-pill-border;
-  box-shadow: 0 10px 18px -16px @unixnotis-shadow-soft;
+  border: 1px solid @unixnotis-card-border;
+  box-shadow: none;
   outline: none;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .unixnotis-group-header:hover {
-  background-image: linear-gradient(160deg, @unixnotis-pill-hover, alpha(@unixnotis-accent-2, 0.18));
+  border-color: alpha(@unixnotis-accent, 0.22);
 }
 
 .unixnotis-group-header:focus,
@@ -306,19 +388,68 @@ entry selection {
 .unixnotis-group-title {
   font-weight: 600;
   font-size: 12px;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
+}
+
+.unixnotis-group-avatar {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 9px;
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.9);
+}
+
+.unixnotis-group.relay .unixnotis-group-avatar {
+  background: alpha(#fbbf24, 0.08);
+  color: alpha(#fde68a, 0.90);
+}
+
+.unixnotis-group.unresolved .unixnotis-group-avatar {
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.82);
+}
+
+.unixnotis-group.recognized .unixnotis-group-avatar {
+  border: 1px solid alpha(#ffffff, 0.10);
+}
+
+.unixnotis-group.conflict .unixnotis-group-avatar {
+  background: alpha(#fb7185, 0.11);
+  color: #fecdd3;
+}
+
+.unixnotis-group-secondary {
+  color: alpha(#ffffff, 0.54);
+  font-size: 11px;
+}
+
+.unixnotis-group-trust-chip {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  background: alpha(#fbbf24, 0.09);
+  color: alpha(#fde68a, 0.86);
+  border: 1px solid alpha(#fbbf24, 0.18);
+}
+
+.unixnotis-group.conflict .unixnotis-group-trust-chip {
+  background: alpha(#fb7185, 0.12);
+  color: #fecdd3;
+  border-color: alpha(#fb7185, 0.30);
 }
 
 .unixnotis-group-count {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.22), alpha(@unixnotis-accent-2, 0.2));
-  color: @unixnotis-text;
+  background: alpha(#ffffff, 0.06);
+  color: alpha(#ffffff, 0.72);
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  border: 1px solid alpha(@unixnotis-accent, 0.35);
+  border: 1px solid alpha(#ffffff, 0.10);
   min-width: 22px;
+  box-shadow: none;
 }
 
 .unixnotis-group-chevron {
@@ -326,15 +457,11 @@ entry selection {
 }
 
 .unixnotis-group-row-collapsed .unixnotis-group-count {
-  border-color: alpha(@unixnotis-accent-2, 0.3);
+  border-color: alpha(#ffffff, 0.10);
 }
 
 .unixnotis-group-row-no-icon .unixnotis-group-title {
   margin-left: 2px;
-}
-
-.unixnotis-panel-card-grouped {
-  margin-left: 8px;
 }
 
 /*
@@ -346,107 +473,164 @@ entry selection {
 }
 
 .unixnotis-panel-card {
-  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, @unixnotis-notification-bg-2);
-  border: 1px solid @unixnotis-card-border;
-  border-radius: 20px;
+  background-image: linear-gradient(
+    180deg,
+    alpha(#2c3762, 0.82) 0%,
+    alpha(#1a2242, 0.88) 55%,
+    alpha(#121834, 0.93) 100%
+  );
+  border: 1px solid alpha(#ffffff, 0.10);
   border-radius: var(--unixnotis-notification-card-radius);
-  padding: 10px 12px;
   padding: var(--unixnotis-panel-card-padding-y) var(--unixnotis-panel-card-padding-x);
-  margin-bottom: 8px;
+  margin: 0;
   box-shadow:
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 22px -18px alpha(@unixnotis-accent, 0.16),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+    inset 0 1px 0 alpha(#ffffff, 0.09),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    inset 0 -1px 0 alpha(#000000, 0.20),
+    0 4px 12px -8px alpha(#000000, 0.65);
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
-.unixnotis-panel-card.stacked {
-  /* One focused shadow keeps the foreground content visually above the rear layers */
+/* Group headers already carry identity, so child cards use a compact metadata lane */
+.unixnotis-panel-card.group-owned-identity {
+  padding-top: 6px;
+  padding-bottom: 8px;
+}
+
+.unixnotis-panel-card.group-owned-identity .unixnotis-panel-card-header {
+  margin-bottom: -6px;
+}
+
+.unixnotis-panel-card.group-owned-identity .unixnotis-panel-close {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.unixnotis-panel-card-thumbnail {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.unixnotis-panel-card-thumbnail.unixnotis-panel-content-image,
+.unixnotis-panel-card-thumbnail.unixnotis-panel-sender-visual {
+  border-radius: 10px;
+  background: alpha(#0a0f1f, 0.40);
+  border: 1px solid alpha(#ffffff, 0.10);
   box-shadow:
-    0 12px 24px -20px @unixnotis-shadow-strong,
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    inset 0 1px 2px alpha(#000000, 0.25),
+    inset 0 0 0 1px alpha(#ffffff, 0.03);
+  opacity: 0.92;
 }
 
-.unixnotis-panel-card-group-collapsed {
-  /* Pull the foreground over the middle layer while leaving its rounded top visible */
-  margin-top: -58px;
-  margin-bottom: 8px;
+.unixnotis-panel-card.collapsed-group-preview {
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.11),
+    inset 0 2px 0 alpha(#ffffff, 0.04),
+    inset 0 -1px 0 alpha(#000000, 0.20),
+    0 6px 14px -10px alpha(#000000, 0.72);
 }
 
-.unixnotis-panel-card-group-expanded {
-  margin-bottom: var(--unixnotis-panel-card-gap);
+.unixnotis-panel-card.unixnotis-panel-card-grouped {
+  border-radius: var(--unixnotis-notification-card-radius);
 }
 
-.unixnotis-stack-ghost {
-  /* Full card silhouettes preserve the stack shape if card colors are customized */
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.10);
-  border-radius: 18px;
+.unixnotis-panel-card-foreground.unixnotis-panel-card-grouped {
+  border-radius: var(--unixnotis-notification-card-radius);
+}
+
+.unixnotis-stack-layer {
+  min-height: 68px;
   padding: 0;
-  min-height: 68px;
-  opacity: 1;
-  margin-left: 10px;
-  margin-right: 10px;
-  margin-top: -58px;
-  margin-bottom: 0;
-  border: 1px solid alpha(@unixnotis-card-border, 0.62);
+  border: 1px solid alpha(#ffffff, 0.10);
+  border-radius: var(--unixnotis-notification-card-radius);
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.10) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#2c3762, 0.85) 0%,
+      alpha(#1a2242, 0.90) 55%,
+      alpha(#121834, 0.94) 100%
+    );
   box-shadow:
-    0 -2px 10px -8px alpha(@unixnotis-accent, 0.22),
-    0 8px 14px -14px @unixnotis-shadow-soft;
+    inset 0 1px 0 alpha(#ffffff, 0.10),
+    inset 0 2px 0 alpha(#ffffff, 0.04),
+    0 6px 10px -10px alpha(#000000, 0.30);
 }
 
-.unixnotis-stack-ghost-2 {
-  background: mix(@unixnotis-notification-bg-2, @unixnotis-card-border, 0.06);
-  min-height: 68px;
-  opacity: 1;
-  margin-left: 20px;
-  margin-right: 20px;
-  margin-top: 0;
-  margin-bottom: 0;
-  border-color: alpha(@unixnotis-card-border, 0.42);
+.unixnotis-stack-layer-back {
+  opacity: 0.80;
+  border-color: alpha(#ffffff, 0.07);
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.06) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#232c50, 0.82) 0%,
+      alpha(#151d3a, 0.88) 55%,
+      alpha(#0e122b, 0.92) 100%
+    );
   box-shadow:
-    0 -2px 10px -9px alpha(@unixnotis-accent, 0.14),
-    0 10px 16px -15px @unixnotis-shadow-soft;
+    inset 0 1px 0 alpha(#ffffff, 0.06),
+    0 6px 10px -10px alpha(#000000, 0.24);
+}
+
+.unixnotis-stack-layer-middle {
+  opacity: 0.92;
+  border-color: alpha(#ffffff, 0.09);
+  background-image:
+    linear-gradient(135deg, alpha(#ffffff, 0.08) 0%, alpha(#ffffff, 0) 28%),
+    linear-gradient(
+      180deg,
+      alpha(#29325c, 0.84) 0%,
+      alpha(#19213f, 0.90) 55%,
+      alpha(#101531, 0.94) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 alpha(#ffffff, 0.08),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    0 6px 10px -10px alpha(#000000, 0.26);
 }
 
 .unixnotis-panel-card.active {
-  box-shadow:
-    0 0 0 1px alpha(@unixnotis-accent, 0.28),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+  border-color: alpha(#ffffff, 0.14);
 }
 
-.unixnotis-panel-card.critical {
+/* Critical state composes after the ordinary active and stack rules */
+.unixnotis-panel-card.critical,
+.unixnotis-panel-card.active.critical {
+  background-image: linear-gradient(
+    180deg,
+    alpha(#3a2430, 0.88) 0%,
+    alpha(#23161f, 0.92) 100%
+  );
+  border-color: alpha(@unixnotis-critical-border, 0.42);
   box-shadow:
-    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px alpha(@unixnotis-urgent, 0.35),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+    inset 0 1px 0 alpha(#ffffff, 0.08),
+    inset 0 2px 0 alpha(#ffffff, 0.03),
+    inset 0 -1px 0 alpha(#000000, 0.22),
+    0 4px 12px -8px alpha(#000000, 0.68);
 }
 
-.unixnotis-panel-card.stacked.active {
-  /* Active state should not erase the collapsed-stack shadow */
-  box-shadow:
-    0 8px 0 -4px alpha(@unixnotis-accent, 0.18),
-    0 16px 0 -8px alpha(@unixnotis-accent, 0.14),
-    0 0 0 1px alpha(@unixnotis-accent, 0.28),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px @unixnotis-glow-cyan,
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+.unixnotis-panel-card.critical .unixnotis-panel-app {
+  color: @unixnotis-critical-text;
 }
 
-.unixnotis-panel-card.stacked.critical,
-.unixnotis-panel-card.stacked.active.critical {
-  /* Urgent stacks keep the same depth while using the urgent border color */
-  box-shadow:
-    0 8px 0 -4px alpha(@unixnotis-urgent, 0.20),
-    0 16px 0 -8px alpha(@unixnotis-urgent, 0.14),
-    0 0 0 1px alpha(@unixnotis-urgent, 0.35),
-    0 12px 26px -20px @unixnotis-shadow-strong,
-    0 0 26px -20px alpha(@unixnotis-urgent, 0.35),
-    inset 0 0 0 1px alpha(#ffffff, 0.05);
+.unixnotis-panel-card.critical .unixnotis-panel-icon {
+  background: alpha(@unixnotis-critical-border, 0.12);
+  border: 1px solid alpha(@unixnotis-critical-border, 0.28);
+  border-radius: 8px;
+  color: @unixnotis-critical-icon;
+  padding: 4px;
+}
+
+.unixnotis-panel-card.critical .unixnotis-panel-summary {
+  color: #ffffff;
 }
 
 .unixnotis-panel-card-has-actions .unixnotis-notification-actions {
+  margin-top: 2px;
   margin-top: calc(var(--unixnotis-panel-action-gap) - 4px);
 }
 
@@ -485,229 +669,178 @@ entry selection {
 }
 
 .unixnotis-panel-app {
-  font-weight: 700;
-  font-size: 14px;
+  color: alpha(@unixnotis-text, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.unixnotis-panel-secondary-claim {
+  color: alpha(#ffffff, 0.54);
+  font-size: 11px;
+}
+
+.unixnotis-panel-trust-chip {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  background: alpha(#fbbf24, 0.09);
+  color: alpha(#fde68a, 0.86);
+  border: 1px solid alpha(#fbbf24, 0.18);
+}
+
+.unixnotis-panel-card.conflict .unixnotis-panel-trust-chip {
+  background: alpha(#fb7185, 0.12);
+  color: #fecdd3;
+  border-color: alpha(#fb7185, 0.30);
 }
 
 .unixnotis-panel-summary {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.2;
+  color: @unixnotis-text;
+  font-weight: 650;
 }
 
 .unixnotis-panel-body {
   color: @unixnotis-muted;
   font-size: 12px;
+  line-height: 1.34;
+}
+
+.unixnotis-popup-status {
+  color: alpha(#ffffff, 0.52);
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .unixnotis-panel-icon {
-  margin-right: 8px;
+  min-width: 30px;
+  min-height: 30px;
+  margin-right: 2px;
+  border-radius: 10px;
+  padding: 5px;
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.90);
+}
+
+.unixnotis-panel-card.relay .unixnotis-panel-icon {
+  background: alpha(#fbbf24, 0.08);
+  color: alpha(#fde68a, 0.90);
+}
+
+.unixnotis-panel-card.unresolved .unixnotis-panel-icon {
+  background: alpha(#ffffff, 0.065);
+  color: alpha(#ffffff, 0.82);
+}
+
+.unixnotis-panel-card.recognized .unixnotis-panel-icon {
+  border: 1px solid alpha(#ffffff, 0.10);
+}
+
+.unixnotis-panel-card.conflict .unixnotis-panel-icon {
+  background: alpha(#fb7185, 0.11);
+  color: #fecdd3;
 }
 
 .unixnotis-notification-actions {
   margin-top: 2px;
 }
 
+.unixnotis-panel-action-overflow {
+  min-width: 32px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.unixnotis-panel-default-action {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.unixnotis-panel-action-overflow-list {
+  padding: 6px;
+}
+
 .unixnotis-notification-action {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-surface-soft, 0.9), alpha(@unixnotis-surface, 0.95));
-  color: @unixnotis-text;
+  background: alpha(#ffffff, 0.045);
+  color: alpha(#ffffff, 0.75);
   border-radius: 10px;
-  padding: 4px 10px;
   padding: var(--unixnotis-notification-action-padding-y) var(--unixnotis-notification-action-padding-x);
-  border: 1px solid alpha(@unixnotis-accent, 0.18);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
   min-height: 28px;
   font-size: 12px;
+  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-notification-action:hover {
-  background-image: linear-gradient(160deg, alpha(@unixnotis-accent, 0.2), alpha(@unixnotis-accent-2, 0.2));
-  border-color: alpha(@unixnotis-accent, 0.5);
-}
-
-/* Restrained default composition
- *
- * Navy remains the visual identity while flat surfaces and spacing carry hierarchy
- */
-.unixnotis-panel {
-  background-image: linear-gradient(155deg, alpha(#080d18, 0.98) 0%, alpha(#10152a, 0.98) 58%, alpha(#241734, 0.97) 100%);
-  border: 1px solid alpha(#9bb8e8, 0.16);
-  border-radius: 20px;
-  font-family: "Inter", "Manrope", "Noto Sans", sans-serif;
-  box-shadow:
-    0 26px 64px -34px alpha(#000000, 0.88),
-    inset 0 1px 0 alpha(#ffffff, 0.035);
-}
-
-.unixnotis-panel-header {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid alpha(#9bb8e8, 0.12);
-  border-radius: 0;
-  box-shadow: none;
-  padding-left: 2px;
-  padding-right: 2px;
-  padding-bottom: 12px;
-}
-
-.unixnotis-panel-title {
-  font-size: 16px;
-  letter-spacing: -0.01em;
-}
-
-.unixnotis-panel-count,
-.unixnotis-group-count {
-  background: alpha(@unixnotis-accent, 0.12);
-  color: #bffaf5;
-  border-color: alpha(@unixnotis-accent, 0.28);
-  box-shadow: none;
-}
-
-.unixnotis-panel-action {
-  background: alpha(#ffffff, 0.045);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  color: alpha(#ffffff, 0.75);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
-}
-
-.unixnotis-panel-action:hover {
   background: alpha(#ffffff, 0.08);
-  border-top: 1px solid alpha(#ffffff, 0.14);
-  border-left: 1px solid alpha(#ffffff, 0.10);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.04);
-  color: #ffffff;
-  transform: translateY(-0.5px);
-}
-
-.unixnotis-panel-action:checked {
-  background-image: linear-gradient(135deg, alpha(#00b4db, 0.22), alpha(#0083b0, 0.22));
-  border: 1px solid alpha(#00a2ff, 0.50);
-  box-shadow: 0 4px 12px -8px alpha(#00a2ff, 0.4), inset 0 1px 0 alpha(#ffffff, 0.12);
-}
-
-.unixnotis-panel-action:checked .unixnotis-panel-action-glyph,
-.unixnotis-panel-action:checked .unixnotis-panel-action-label {
-  color: #ffffff;
-}
-
-.unixnotis-panel-action-close,
-.unixnotis-panel-close {
-  background: alpha(#ffffff, 0.045);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px -4px alpha(#000000, 0.4);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
-}
-
-.unixnotis-panel-action-close:hover,
-.unixnotis-panel-close:hover {
-  background: alpha(#fb7185, 0.16);
-  border-color: alpha(#fb7185, 0.45);
-  color: #fb7185;
-}
-
-.unixnotis-group-header {
-  background: alpha(#ffffff, 0.025);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.03);
-  border-bottom: 1px solid alpha(#ffffff, 0.01);
-  box-shadow: none;
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
-}
-
-.unixnotis-group-header:hover {
-  background: alpha(#ffffff, 0.05);
   border-top-color: alpha(#ffffff, 0.14);
   border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.05);
-  border-bottom-color: alpha(#ffffff, 0.02);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.04);
+  color: #ffffff;
+  box-shadow:
+    0 10px 18px -14px @unixnotis-shadow-soft,
+    0 0 22px -18px @unixnotis-glow-cyan,
+    0 0 20px -18px @unixnotis-glow-pink,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
+.unixnotis-inline-reply {
+  margin-top: 4px;
+}
+
+.unixnotis-inline-reply-entry {
+  color: @unixnotis-text;
+  background-color: alpha(@unixnotis-surface-strong, 0.9);
+  border: 1px solid alpha(@unixnotis-accent, 0.25);
+  border-radius: 10px;
+  padding: 5px 9px;
+  min-height: 28px;
+}
+
+.unixnotis-inline-reply-entry:focus {
+  border-color: alpha(@unixnotis-accent, 0.7);
+  box-shadow: 0 0 16px -12px @unixnotis-glow-cyan;
+}
+
+/* Interactive refinements follow the canonical base rules */
 .unixnotis-group-header:hover .unixnotis-group-count {
-  background: alpha(@unixnotis-accent, 0.22);
-  color: #ffffff;
-  border-color: alpha(@unixnotis-accent, 0.45);
+  background: alpha(#ffffff, 0.09);
+  color: alpha(#ffffff, 0.82);
+  border-color: alpha(#ffffff, 0.14);
 }
 
-.unixnotis-panel-card {
-  background-image: linear-gradient(135deg, alpha(#17253f, 0.90), alpha(#12182c, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 16px;
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.02), 0 4px 12px -8px alpha(#000000, 0.7);
-  transition: background-image 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+.unixnotis-panel-card.unixnotis-default-action:hover {
+  border-color: alpha(@unixnotis-accent, 0.22);
+  box-shadow:
+    0 14px 28px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
-.unixnotis-panel-card:hover {
-  background-image: linear-gradient(135deg, alpha(#21355a, 0.92), alpha(#161e38, 0.97));
-  border-top: 1px solid alpha(#ffffff, 0.14);
-  border-left: 1px solid alpha(#ffffff, 0.10);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04), 0 10px 24px -16px alpha(#000000, 0.85);
-  transform: translateY(-1.5px);
+.unixnotis-panel-card.active.unixnotis-default-action:hover {
+  border-color: alpha(@unixnotis-accent, 0.28);
+  box-shadow:
+    0 14px 28px -20px @unixnotis-shadow-strong,
+    inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
-.unixnotis-panel-card.active {
-  background-image: linear-gradient(135deg, alpha(#1a2e50, 0.93), alpha(#111627, 0.96));
-  border-top: 1px solid alpha(#ffffff, 0.12);
-  border-left: 1px solid alpha(#ffffff, 0.09);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.03), 0 6px 16px -8px alpha(#000000, 0.8);
+.unixnotis-panel-card.unixnotis-panel-card-grouped:hover,
+.unixnotis-panel-card.active.unixnotis-panel-card-grouped:hover {
+  box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.05);
 }
 
-.unixnotis-panel-card.active:hover {
-  background-image: linear-gradient(135deg, alpha(#264375, 0.95), alpha(#151b32, 0.97));
-  border-top: 1px solid alpha(#ffffff, 0.18);
-  border-left: 1px solid alpha(#ffffff, 0.14);
-  border-right: 1px solid alpha(#ffffff, 0.08);
-  border-bottom: 1px solid alpha(#ffffff, 0.04);
-  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05), 0 12px 28px -14px alpha(#000000, 0.9);
-  transform: translateY(-1.5px);
-}
-
-.unixnotis-panel-card.stacked,
-.unixnotis-panel-card.stacked.active {
-  box-shadow: 0 12px 24px -20px alpha(#000000, 0.78);
-}
-
-.unixnotis-stack-ghost {
-  background: #172238;
-  border-color: alpha(#9bb8e8, 0.18);
-  border-radius: 16px;
-  box-shadow: none;
-}
-
-.unixnotis-stack-ghost-2 {
-  background: #121c2f;
-  border-color: alpha(#9bb8e8, 0.14);
-  border-radius: 16px;
-}
-
-.unixnotis-panel-app {
-  color: #a3b3cc;
-  font-size: 10px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.unixnotis-panel-summary {
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.unixnotis-panel-body {
-  color: #cbd5e1;
+.unixnotis-panel-card.unixnotis-default-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px alpha(@unixnotis-accent, 0.25);
 }
 
 /*
@@ -736,7 +869,7 @@ scrollbar slider {
   border: none;
   min-width: 4px;
   min-height: 4px;
-  transition: background-color 0.15s ease-out, min-width 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out;
 }
 
 scrollbar slider:hover {

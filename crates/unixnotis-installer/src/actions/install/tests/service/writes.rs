@@ -121,6 +121,44 @@ fn write_service_artifact_reports_executable_mode_changes() {
 }
 
 #[test]
+fn write_service_artifact_preserves_mode_when_no_mode_is_requested() {
+    let root = test_root("install-service-preserve-file-mode");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let artifact = ServiceArtifact {
+        path: root.join("service.conf"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("new contents\n".to_string()),
+        mode: None,
+    };
+    fs::create_dir_all(&root).expect("make service root");
+    fs::write(&artifact.path, "old contents\n").expect("seed service file");
+    fs::set_permissions(&artifact.path, fs::Permissions::from_mode(0o640))
+        .expect("seed service file mode");
+
+    let changed = write_service_artifact(&ctx, &artifact).expect("service file should update");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(&artifact.path).expect("read updated service file"),
+        "new contents\n"
+    );
+    assert_eq!(
+        fs::metadata(&artifact.path)
+            .expect("service file metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o640
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_managed_directory_artifact_creates_ownership_marker() {
     let root = test_root("install-service-managed-directory");
     let paths = test_paths(&root);
@@ -200,7 +238,7 @@ fn write_service_artifact_rejects_symlink_parent_component() {
     let err = write_service_artifact(&ctx, &artifact).expect_err("symlink parent is unsafe");
 
     // The target directory proves the writer did not follow the linked parent
-    assert!(format!("{err:#}").contains("refusing symlink parent"));
+    assert!(format!("{err:#}").contains("refusing unsafe service directory path"));
     assert!(!target.join("service-file").exists());
     let _ = fs::remove_dir_all(&root);
 }
@@ -298,6 +336,68 @@ fn write_shared_service_file_refuses_to_overwrite_user_content() {
     assert_eq!(
         fs::read_to_string(&artifact.path).expect("read shared file after failure"),
         "longrun\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_shared_service_file_preserves_an_exact_unowned_file() {
+    let root = test_root("install-service-shared-unowned-file");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    fs::create_dir_all(artifact.path.parent().expect("shared file parent"))
+        .expect("create shared file parent");
+    fs::write(&artifact.path, "bundle\n").expect("seed exact unmarked shared file");
+
+    let unchanged = write_service_artifact(&ctx, &artifact).expect("accept exact unowned file");
+
+    assert!(!unchanged);
+    assert!(!marker.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_shared_service_file_rolls_back_when_the_marker_conflicts() {
+    let root = test_root("install-service-shared-marker-conflict");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    let marker = root.join("default").join(".unixnotis-created-type");
+    let artifact = ServiceArtifact {
+        path: root.join("default").join("type"),
+        kind: ServiceArtifactKind::SharedFile {
+            created_marker: Some(marker.clone()),
+        },
+        contents: Some("bundle\n".to_string()),
+        mode: Some(0o644),
+    };
+    fs::create_dir_all(marker.parent().expect("marker parent")).expect("create shared file parent");
+    fs::write(&marker, "foreign\n").expect("seed foreign marker");
+
+    let error = write_service_artifact(&ctx, &artifact)
+        .expect_err("conflicting marker should reject the pair");
+
+    assert!(error.to_string().contains("refusing to overwrite"));
+    assert!(!artifact.path.exists());
+    assert_eq!(
+        fs::read_to_string(marker).expect("read foreign marker"),
+        "foreign\n"
     );
     let _ = fs::remove_dir_all(&root);
 }
@@ -413,7 +513,7 @@ fn remove_shared_service_file_handles_missing_and_invalid_paths_safely() {
     let error = remove_service_artifact(&invalid)
         .expect_err("filesystem errors must not look like missing shared files");
 
-    assert!(format!("{error:#}").contains("failed to inspect"));
+    assert!(format!("{error:#}").contains("failed to remove"));
     assert!(marker.exists());
 
     let directory_artifact = ServiceArtifact {
@@ -429,9 +529,10 @@ fn remove_shared_service_file_handles_missing_and_invalid_paths_safely() {
     let error = remove_service_artifact(&directory_artifact)
         .expect_err("a directory must never be removed as a shared file");
 
-    assert!(error
-        .to_string()
-        .contains("non-regular shared service artifact"));
+    assert!(
+        format!("{error:#}").contains("non-regular file target"),
+        "unexpected shared directory error: {error:#}"
+    );
     assert!(directory_artifact.path.is_dir());
     let _ = fs::remove_dir_all(&root);
 }
@@ -575,6 +676,24 @@ fn service_symlink_helpers_distinguish_missing_paths_from_filesystem_errors() {
 }
 
 #[test]
+fn service_symlink_removal_rejects_a_regular_file_without_deleting_it() {
+    let root = test_root("install-service-remove-regular-link");
+    let artifact = root.join("service-link");
+    fs::create_dir_all(&root).expect("make service root");
+    fs::write(&artifact, "user data").expect("write regular artifact");
+
+    let error = remove_service_symlink(&artifact, std::path::Path::new("service"))
+        .expect_err("regular artifacts must not be removed as links");
+
+    assert!(format!("{error:#}").contains("refusing to remove non-symlink"));
+    assert_eq!(
+        fs::read_to_string(&artifact).expect("read preserved artifact"),
+        "user data"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
     let root = test_root("install-service-owned-replace");
     let paths = test_paths(&root);
@@ -649,6 +768,40 @@ fn install_replaces_regular_owned_artifact_but_rejects_unsafe_existing_path() {
 }
 
 #[test]
+fn install_replaces_an_oversized_sparse_service_file_without_reading_it() {
+    let root = test_root("install-service-oversized-regular-file");
+    let paths = test_paths(&root);
+    let detection = Detection {
+        owner: None,
+        daemons: Vec::new(),
+    };
+    let ctx = test_context(&detection, &paths, ActionMode::Install);
+    fs::create_dir_all(&root).expect("create service root");
+    let path = root.join("service-file");
+    let oversized = fs::File::create(&path).expect("create sparse service file");
+    oversized
+        .set_len(1_073_741_824)
+        .expect("extend sparse service file");
+    drop(oversized);
+    let artifact = ServiceArtifact {
+        path: path.clone(),
+        kind: ServiceArtifactKind::File,
+        contents: Some("service\n".to_string()),
+        mode: None,
+    };
+
+    let changed =
+        write_service_artifact(&ctx, &artifact).expect("replace oversized regular service file");
+
+    assert!(changed);
+    assert_eq!(
+        fs::read_to_string(path).expect("read replaced service file"),
+        "service\n"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_service_artifact_rejects_socket_artifact_path() {
     let root = test_root("install-service-special-file-reject");
     let paths = test_paths(&root);
@@ -670,7 +823,7 @@ fn write_service_artifact_rejects_socket_artifact_path() {
 
     let err = write_service_artifact(&ctx, &artifact).expect_err("socket path is unsafe");
 
-    // The socket remains untouched and the writer fails before read_to_string can block on it
+    // The socket remains untouched and the writer fails before descriptor comparison can block
     assert!(err
         .to_string()
         .contains("cannot replace non-regular service artifact"));

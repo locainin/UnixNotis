@@ -1,7 +1,7 @@
 //! Popup UI state owned by the GTK main thread
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -10,10 +10,10 @@ use unixnotis_core::{Config, ControlState};
 use unixnotis_ui::css::CssManager;
 use unixnotis_ui::icons::DesktopIconIndex;
 
-use crate::dbus::UiCommand;
+use crate::dbus::{UiCommand, UiEvent};
 
 use super::super::entry::PopupEntry;
-use super::super::icons::TextureCache;
+use super::super::icons::{TextureCache, ThemeIconCache};
 use super::super::window::PopupInputRegionState;
 
 /// Popup-only GTK state for notification toasts
@@ -22,12 +22,16 @@ pub struct UiState {
     pub(in crate::ui) config_path: std::path::PathBuf,
     pub(in crate::ui) css: CssManager,
     pub(in crate::ui) command_tx: Sender<UiCommand>,
+    // Popup-only events let local banner timers avoid mutating daemon state
+    pub(in crate::ui) popup_event_tx: Option<async_channel::Sender<UiEvent>>,
     pub(in crate::ui) popup_window: gtk::ApplicationWindow,
     pub(in crate::ui) popup_stack: gtk::Box,
     // Shared popup input shaping state for config and runtime updates
     pub(in crate::ui) popup_input_region: PopupInputRegionState,
     pub(in crate::ui) popups: HashMap<u32, PopupEntry>,
     pub(in crate::ui) popup_order: VecDeque<u32>,
+    // A hidden banner stays hidden for its exact generation until it is replaced
+    pub(in crate::ui) hidden_popups: HashSet<unixnotis_core::NotificationKey>,
     // Only visible ids need repeated GTK updates during backlog churn
     pub(in crate::ui) visible_popups: Vec<u32>,
     // Latest daemon gate state used to keep visible popups in policy
@@ -36,14 +40,31 @@ pub struct UiState {
     pub(in crate::ui) desktop_icons: DesktopIconIndex,
     // Monitors mark lookup state dirty without rebuilding inside callbacks
     pub(in crate::ui) icon_sources_dirty: Rc<Cell<bool>>,
+    // Each source invalidation advances the generation used by duplicate-update checks
+    pub(in crate::ui) icon_source_generation: u64,
     pub(in crate::ui) _app_info_monitor: gtk::gio::AppInfoMonitor,
     pub(in crate::ui) _icon_theme: Option<gtk::IconTheme>,
     // Cache resolved icon names per app to reduce repeated theme lookups
-    pub(in crate::ui) icon_cache: HashMap<String, IconCacheEntry>,
+    pub(in crate::ui) icon_cache: HashMap<IconResolutionKey, IconCacheEntry>,
     // FIFO order used to cap icon cache growth
-    pub(in crate::ui) icon_cache_order: VecDeque<String>,
+    pub(in crate::ui) icon_cache_order: VecDeque<IconResolutionKey>,
     // Small LRU for decoded textures to avoid repeated PNG decode work
     pub(in crate::ui) icon_texture_cache: Rc<RefCell<TextureCache>>,
+    // Themed paintables stay on the GTK thread and are reused by repeated rows
+    pub(in crate::ui) theme_icon_cache: ThemeIconCache,
+}
+
+/// Inputs that affect desktop and theme icon candidate resolution
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(in crate::ui) struct IconResolutionKey {
+    pub(in crate::ui) app_name: String,
+    pub(in crate::ui) badge_icon: String,
+    pub(in crate::ui) desktop_id: String,
+    pub(in crate::ui) claimed_theme_icon: String,
+    pub(in crate::ui) claimed_desktop_id: String,
+    // Unresolved identities search claimed presentation before daemon branding
+    // A trust transition must not reuse a result chosen under the opposite order
+    pub(in crate::ui) claimed_candidates_first: bool,
 }
 
 pub(in crate::ui) struct IconCacheEntry {

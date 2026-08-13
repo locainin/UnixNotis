@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::debug_logs::journal::{daemon_unit_from_env, recent_args};
 use crate::system_tools;
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
+use unixnotis_core::CommandSpec;
 
 use super::super::report::safe_doctor_text;
 use super::super::report::{DoctorLogResult, DoctorLogSource};
@@ -60,11 +60,10 @@ pub(super) async fn read_recent_journal(
     unit: &str,
 ) -> Result<super::sanitize::JournalCollection, String> {
     // Fixed trusted lookup prevents a PATH entry from impersonating journalctl
-    let path = system_tools::trusted_program_path("journalctl")
-        .ok_or_else(|| "journalctl was not found in trusted system directories".to_string())?;
-    let mut command = Command::new(path);
+    let spec = CommandSpec::direct("journalctl", recent_args(unit, JOURNAL_LINE_LIMIT));
+    let mut command = system_tools::tokio_command_from_spec(&spec)
+        .map_err(|error| safe_doctor_text(&error.to_string()))?;
     command
-        .args(recent_args(unit, JOURNAL_LINE_LIMIT))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);

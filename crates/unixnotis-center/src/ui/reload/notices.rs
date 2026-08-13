@@ -1,7 +1,7 @@
 //! Priority and dismissal state for configuration and CSS reload notices
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReloadNoticeKind {
+pub(in crate::ui) enum ReloadNoticeKind {
     Config,
     Css,
 }

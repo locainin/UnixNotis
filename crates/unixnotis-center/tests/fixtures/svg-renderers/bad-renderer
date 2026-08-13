@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Consume the complete request before returning malformed dimensions
+dd bs=1 count=8 iflag=fullblock of=/dev/null 2>/dev/null || exit 1
+cat >/dev/null
+printf '\377\377\377\377\377\377\377\377'

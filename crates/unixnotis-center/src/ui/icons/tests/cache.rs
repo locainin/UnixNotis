@@ -1,4 +1,8 @@
-use super::{hash_image_data, icon_key_for_path, image_key_matches, set_image_key, IconKey};
+use super::{clear_image_key, icon_key_for_path, image_key_matches, set_image_key, IconKey};
+
+fn hash_image_data(data: &[u8]) -> [u8; 32] {
+    *blake3::hash(data).as_bytes()
+}
 
 fn key(name: &str) -> IconKey {
     IconKey::Name {
@@ -9,7 +13,7 @@ fn key(name: &str) -> IconKey {
 }
 
 #[gtk::test]
-fn image_qdata_key_matches_only_the_stored_icon_request() {
+fn image_key_matches_only_the_stored_icon_request() {
     let image = gtk::Image::new();
     let stored = key("network-wireless");
     let different = key("audio-volume-high");
@@ -19,6 +23,42 @@ fn image_qdata_key_matches_only_the_stored_icon_request() {
 
     assert!(image_key_matches(&image, &stored));
     assert!(!image_key_matches(&image, &different));
+}
+
+#[gtk::test]
+fn cleared_image_key_cannot_accept_a_stale_decode_completion() {
+    let image = gtk::Image::new();
+    let key = key("org.example.Old");
+
+    set_image_key(&image, key.clone());
+    assert!(image_key_matches(&image, &key));
+
+    clear_image_key(&image);
+
+    assert!(!image_key_matches(&image, &key));
+}
+
+#[gtk::test]
+fn image_keys_do_not_survive_the_image_object() {
+    let stored = key("network-wireless");
+    let old_image = gtk::Image::new();
+    set_image_key(&old_image, stored.clone());
+    drop(old_image);
+
+    let new_image = gtk::Image::new();
+    assert!(!image_key_matches(&new_image, &stored));
+}
+
+#[gtk::test]
+fn image_key_tracking_has_a_hard_bound_when_images_stop_being_accessed() {
+    for index in 0..=super::MAX_TRACKED_IMAGE_KEYS {
+        let image = gtk::Image::new();
+        set_image_key(&image, key(&format!("icon-{index}")));
+    }
+
+    super::IMAGE_KEYS.with(|entries| {
+        assert!(entries.borrow().len() <= super::MAX_TRACKED_IMAGE_KEYS);
+    });
 }
 
 #[test]

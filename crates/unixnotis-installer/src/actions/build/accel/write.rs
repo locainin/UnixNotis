@@ -1,8 +1,9 @@
 //! Build acceleration config writes and updates
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::Path;
+
+use unixnotis_core::filesystem::write_file_atomic;
 
 use super::model::{BuildAccelDetection, BuildAccelOutcome};
 use super::wrapper::{format_build_accel_config, write_wrapper_script};
@@ -25,18 +26,12 @@ pub fn write_build_accel_config(
     }
 
     let content = format_build_accel_config();
-    if let Some(parent) = config_path.parent() {
-        // Create `.cargo/` before any write so both wrapper and config land in one known place
-        if let Err(err) = fs::create_dir_all(parent) {
-            return BuildAccelOutcome::Failed(err.to_string());
-        }
-    }
 
     // Write the wrapper first so the config never points at a missing script
     if let Err(err) = write_wrapper_script(&wrapper_path) {
         return BuildAccelOutcome::Failed(err);
     }
-    if let Err(err) = write_atomic(&config_path, &content) {
+    if let Err(err) = write_file_atomic(&config_path, content.as_bytes(), 0o644) {
         return BuildAccelOutcome::Failed(err.to_string());
     }
 
@@ -70,7 +65,7 @@ fn update_existing_config(
     if let Err(err) = write_wrapper_script(wrapper_path) {
         return BuildAccelOutcome::Failed(err);
     }
-    if let Err(err) = write_atomic(config_path, &content) {
+    if let Err(err) = write_file_atomic(config_path, content.as_bytes(), 0o644) {
         return BuildAccelOutcome::Failed(err.to_string());
     }
 
@@ -79,67 +74,4 @@ fn update_existing_config(
         used_sccache: detection.sccache_installed,
         used_mold: detection.mold_installed,
     }
-}
-
-fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    // A sibling temp file keeps rename atomic on common Unix filesystems
-    let parent = path.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing parent directory")
-    })?;
-    fs::create_dir_all(parent)?;
-    let (tmp_path, mut temp_file) = create_atomic_temp_file(path)?;
-    temp_file
-        .write_all(contents.as_bytes())
-        .inspect_err(|_err| {
-            let _ = fs::remove_file(&tmp_path);
-        })?;
-    temp_file.flush().inspect_err(|_err| {
-        let _ = fs::remove_file(&tmp_path);
-    })?;
-    drop(temp_file);
-    fs::rename(&tmp_path, path).inspect_err(|_err| {
-        let _ = fs::remove_file(&tmp_path);
-    })?;
-    Ok(())
-}
-
-pub(super) fn atomic_temp_path(path: &Path) -> PathBuf {
-    // Temp paths must be predictable to clean up, but create_new keeps existing paths untrusted
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    let tmp_name = format!("{file_name}.tmp-{}", std::process::id());
-    path.with_file_name(tmp_name)
-}
-
-fn create_atomic_temp_file(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
-    for attempt in 0..16 {
-        let temp_path = atomic_temp_path_attempt(path, attempt);
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-        {
-            Ok(file) => return Ok((temp_path, file)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AlreadyExists,
-        "could not allocate a safe build config temporary path",
-    ))
-}
-
-fn atomic_temp_path_attempt(path: &Path, attempt: u8) -> PathBuf {
-    if attempt == 0 {
-        return atomic_temp_path(path);
-    }
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock moved backwards")
-        .as_nanos();
-    path.with_file_name(format!(
-        "{file_name}.tmp-{}-{nonce}-{attempt}",
-        std::process::id()
-    ))
 }

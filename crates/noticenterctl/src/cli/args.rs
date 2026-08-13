@@ -104,4 +104,19 @@ pub enum PresetCommand {
     Inspect {
         input: String,
     },
+    // Replace the local configuration and bundled scripts with current defaults
+    ResetConfig {
+        /// Skip the interactive confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ThemeCommand {
+    // Export editable copies of the bundled theme into a new directory
+    ExportStock {
+        #[arg(long, value_name = "DIRECTORY")]
+        output: Option<std::path::PathBuf>,
+    },
 }

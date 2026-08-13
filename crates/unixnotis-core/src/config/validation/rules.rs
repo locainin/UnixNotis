@@ -121,8 +121,10 @@ impl<'de> Deserialize<'de> for RuleUrgency {
 pub struct RuleConfig {
     /// Optional rule name for logging or debugging
     pub name: Option<String>,
-    /// Match against the notification app name (case-insensitive substring)
+    /// Match daemon-resolved application identity (case-insensitive substring)
     pub app: Option<String>,
+    /// Match sender-provided freedesktop `app_name` presentation metadata
+    pub claimed_app: Option<String>,
     /// Match against the notification summary (case-insensitive substring)
     pub summary: Option<String>,
     /// Match against the notification body (case-insensitive substring)

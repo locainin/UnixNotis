@@ -9,9 +9,9 @@ use crate::test_support::fs::write_executable;
 
 #[test]
 fn gtk_css_feature_parser_handles_major_and_minor_checks() {
-    // GTK 4.16 is the first modern CSS feature level needed by the shipped theme path
+    // GTK 4.18 is the common API baseline needed by the shipped UI
     assert!(
-        gtk_css_features_from_version_string("4.16.2")
+        !gtk_css_features_from_version_string("4.17.2")
             .expect("version")
             .custom_properties
     );
@@ -21,9 +21,9 @@ fn gtk_css_feature_parser_handles_major_and_minor_checks() {
             .custom_properties
     );
 
-    // Older GTK4 builds still work with legacy CSS but should not claim var() support
+    // Older GTK4 builds must not claim support for the common UI contract
     assert!(
-        !gtk_css_features_from_version_string("4.14.9")
+        !gtk_css_features_from_version_string("4.17.9")
             .expect("version")
             .custom_properties
     );
@@ -37,7 +37,7 @@ fn gtk_css_feature_parser_handles_major_and_minor_checks() {
 }
 
 #[test]
-fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
+fn gtk_css_features_check_rejects_old_gtk_and_accepts_modern_gtk() {
     let _lock = crate::test_support::env::test_env_lock();
     let root = test_root("gtk-css-features");
     let fake_bin = root.join("bin");
@@ -48,15 +48,15 @@ fn gtk_css_features_check_warns_for_old_gtk_and_okays_modern_gtk() {
 
     let old = gtk4_css_features_check(&pkg);
 
-    assert_eq!(old.state, CheckState::Warn);
-    assert!(old.detail.contains("legacy theming"));
+    assert_eq!(old.state, CheckState::Fail);
+    assert!(old.detail.contains("GTK 4.18+ is required"));
 
     write_fake_pkg_config(&fake_bin, "4.22.4", None);
     let modern = gtk4_css_features_check(&pkg);
 
     // Modern GTK should advertise the CSS variable support used by shipped themes
     assert_eq!(modern.state, CheckState::Ok);
-    assert!(modern.detail.contains("modern css variables"));
+    assert!(modern.detail.contains("custom properties"));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -73,9 +73,8 @@ fn gtk_checks_distinguish_pkg_config_missing_from_package_missing() {
     let css = gtk4_css_features_check(&pkg_missing);
     let layer = gtk4_layer_shell_check(&pkg_missing);
 
-    // CSS is optional feature detail, but gtk4-layer-shell is required for the UI
-    assert_eq!(css.state, CheckState::Warn);
-    assert!(css.detail.contains("pkg-config missing"));
+    assert_eq!(css.state, CheckState::Fail);
+    assert!(css.detail.contains("GTK 4.18 or newer is required"));
     assert_eq!(layer.state, CheckState::Fail);
     assert!(layer.detail.contains("pkg-config missing"));
     let _ = fs::remove_dir_all(root);

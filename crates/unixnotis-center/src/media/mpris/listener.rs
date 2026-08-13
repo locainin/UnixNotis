@@ -7,8 +7,14 @@ use tokio::sync::{mpsc::Sender, watch};
 use tracing::warn;
 use unixnotis_core::PanelDebugLevel;
 use zbus::fdo::PropertiesProxy;
+use zbus::message::Type;
+use zbus::names::InterfaceName;
+use zbus::zvariant::Value;
+use zbus::{MatchRule, Message, MessageStream};
 
-use super::constants::MPRIS_PLAYER;
+use super::constants::{
+    MAX_MPRIS_CHANGED_PROPERTIES, MAX_MPRIS_PROPERTIES_CHANGED_BODY_BYTES, MPRIS_PLAYER,
+};
 use crate::diagnostics::panel_debug as debug;
 use crate::media::runtime::{MediaRefreshOrigin, MediaSignal};
 
@@ -19,7 +25,24 @@ pub(in crate::media) fn spawn_properties_listener(
     mut cancel_rx: watch::Receiver<bool>,
 ) {
     tokio::spawn(async move {
-        let mut stream = match properties.receive_properties_changed().await {
+        let connection = properties.inner().connection().clone();
+        let destination = properties.inner().destination().to_owned();
+        let path = properties.inner().path().to_owned();
+        let rule = match MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(destination)
+            .and_then(|builder| builder.path(path))
+            .and_then(|builder| builder.interface("org.freedesktop.DBus.Properties"))
+            .and_then(|builder| builder.member("PropertiesChanged"))
+            .map(zbus::MatchRuleBuilder::build)
+        {
+            Ok(rule) => rule,
+            Err(err) => {
+                warn!(?err, "failed to build media property signal rule");
+                return;
+            }
+        };
+        let mut stream = match MessageStream::for_match_rule(rule, &connection, Some(32)).await {
             Ok(stream) => stream,
             Err(err) => {
                 warn!(?err, "failed to subscribe to media properties");
@@ -38,13 +61,13 @@ pub(in crate::media) fn spawn_properties_listener(
                     let Some(update) = update else {
                         break;
                     };
-                    let Ok(args) = update.args() else {
+                    let Ok(message) = update else {
                         continue;
                     };
-                    if args.interface_name != MPRIS_PLAYER {
+                    let Some(relevant) = relevant_media_change_from_message(&message) else {
                         continue;
-                    }
-                    if !is_relevant_media_change(&args.changed_properties, &args.invalidated_properties) {
+                    };
+                    if !relevant {
                         continue;
                     }
                     debug::log(PanelDebugLevel::Verbose, || {
@@ -64,6 +87,40 @@ pub(in crate::media) fn spawn_properties_listener(
             }
         }
     });
+}
+
+pub(super) fn relevant_media_change_from_message(message: &Message) -> Option<bool> {
+    // SECURITY: enforce the encoded signal-body budget before deserializing
+    // `a{sv}`. Dynamic zvariant values may allocate attacker-controlled memory
+    if !properties_changed_body_allowed(message.body().len()) {
+        return None;
+    }
+    let body = message.body();
+    let (interface_name, changed, invalidated): (
+        InterfaceName<'_>,
+        HashMap<&str, Value<'_>>,
+        Vec<&str>,
+    ) = body.deserialize().ok()?;
+    if interface_name.as_str() != MPRIS_PLAYER
+        || !changed_property_count_allowed(changed.len(), invalidated.len())
+    {
+        return None;
+    }
+    Some(is_relevant_media_change(&changed, &invalidated))
+}
+
+pub(super) const fn properties_changed_body_allowed(body_len: usize) -> bool {
+    body_len <= MAX_MPRIS_PROPERTIES_CHANGED_BODY_BYTES
+}
+
+pub(super) const fn changed_property_count_allowed(
+    changed_count: usize,
+    invalidated_count: usize,
+) -> bool {
+    match changed_count.checked_add(invalidated_count) {
+        Some(count) => count <= MAX_MPRIS_CHANGED_PROPERTIES,
+        None => false,
+    }
 }
 
 pub(super) fn is_relevant_media_change(

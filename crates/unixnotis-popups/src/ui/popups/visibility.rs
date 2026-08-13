@@ -5,6 +5,10 @@ use super::super::UiState;
 use super::mutation::VisiblePopupUpdate;
 use gtk::prelude::*;
 use tracing::{debug, warn};
+use unixnotis_ui::CutCorner;
+
+use crate::dbus::UiCommand;
+use crate::ui::entry::try_send_command;
 
 impl UiState {
     pub(in super::super) fn update_popup_visibility(&mut self, force_region_refresh: bool) {
@@ -14,9 +18,13 @@ impl UiState {
         // Max-visible of zero disables popups entirely
         if max_visible == 0 {
             let update = self.apply_visible_popups(Vec::new());
-            self.popup_window.set_visible(false);
+            let window_changed = set_window_visible_if_changed(&self.popup_window, false);
             // Keep input region empty when popups are disabled
-            if force_region_refresh || update.stack_changed {
+            if needs_input_region_refresh(
+                force_region_refresh,
+                update.stack_changed,
+                window_changed,
+            ) {
                 refresh_popup_input_region(
                     &self.popup_window,
                     &self.popup_stack,
@@ -37,9 +45,9 @@ impl UiState {
         let update = self.apply_visible_popups(desired_visible);
         // Window visibility follows the rows GTK actually represents, not just the
         // logical popup order that was requested upstream
-        self.popup_window
-            .set_visible(!self.visible_popups.is_empty());
-        if force_region_refresh || update.stack_changed {
+        let window_changed =
+            set_window_visible_if_changed(&self.popup_window, !self.visible_popups.is_empty());
+        if needs_input_region_refresh(force_region_refresh, update.stack_changed, window_changed) {
             refresh_popup_input_region(
                 &self.popup_window,
                 &self.popup_stack,
@@ -54,28 +62,43 @@ impl UiState {
     }
 
     pub(in super::super) fn refresh_after_config_reload(&mut self) {
-        // Only built rows have GTK roots that need a width refresh
-        let resized_roots = self
+        // Only built rows have GTK wrappers that may need a corner refresh
+        let materialized_roots = self
             .popups
             .values()
             .filter(|entry| entry.root.is_some())
             .count();
-        // Prefer the live width when GTK has already measured the stack
-        let popup_width = self
-            .popup_stack
-            .width()
-            .max(self.popup_stack.width_request())
-            .max(1);
         for entry in self.popups.values() {
             let Some(root) = entry.root.as_ref() else {
                 continue;
             };
-            root.set_size_request(popup_width, -1);
+            let Some(revealer) = entry.revealer.as_ref() else {
+                continue;
+            };
+            let plate = revealer.child().and_downcast::<CutCorner>();
+            match (self.config.theme.notification_corners.is_active(), plate) {
+                (true, Some(plate)) => {
+                    // Active cut geometry updates without rebuilding the full card
+                    plate.set_corners(self.config.theme.notification_corners);
+                }
+                (true, None) => {
+                    // Detach the ordinary card before moving it under the opt-in clipper
+                    revealer.set_child(gtk::Widget::NONE);
+                    let plate = CutCorner::new(root, self.config.theme.notification_corners);
+                    revealer.set_child(Some(&plate));
+                }
+                (false, Some(plate)) => {
+                    // Return the card to the revealer before dropping the disabled clipper
+                    plate.set_child(gtk::Widget::NONE);
+                    revealer.set_child(Some(root));
+                }
+                (false, None) => {}
+            }
         }
         // Re-run visibility so max_visible changes take effect right away
         self.update_popup_visibility(true);
         debug!(
-            resized_roots,
+            materialized_roots,
             visible_target =
                 visible_popup_target(self.popups.len(), self.config.popups.max_visible),
             total = self.popups.len(),
@@ -90,6 +113,7 @@ impl UiState {
         let restack_ids = visible_popup_restack_ids(&previous_visible, &desired_visible);
         let mut update = VisiblePopupUpdate::default();
         let mut applied_visible = Vec::with_capacity(desired_visible.len());
+        let mut newly_materialized = Vec::new();
         for id in &previous_visible {
             if desired_visible_set.contains(id) {
                 // Rows that stay visible keep their current widgets
@@ -102,6 +126,10 @@ impl UiState {
         // Attach or move only the rows that actually changed order
         let mut previous_revealer: Option<gtk::Revealer> = None;
         for id in &desired_visible {
+            let was_materialized = self
+                .popups
+                .get(id)
+                .is_some_and(super::super::entry::PopupEntry::is_materialized);
             self.materialize_popup(*id);
             let Some(entry) = self.popups.get(id) else {
                 warn!(id, "popup marked visible but entry is missing");
@@ -126,6 +154,14 @@ impl UiState {
             }
 
             previous_revealer = Some(revealer.clone());
+            if !was_materialized {
+                // Materialization is complete only after the row joins the live stack
+                try_send_command(
+                    &self.command_tx,
+                    UiCommand::Materialized(entry.notification.key()),
+                );
+                newly_materialized.push(entry.notification.key());
+            }
             applied_visible.push(*id);
         }
 
@@ -152,8 +188,27 @@ impl UiState {
         }
 
         self.visible_popups = applied_visible;
+        for key in newly_materialized {
+            self.schedule_popup_hide(key);
+        }
         update
     }
+}
+
+fn set_window_visible_if_changed(window: &gtk::ApplicationWindow, visible: bool) -> bool {
+    if window.is_visible() == visible {
+        return false;
+    }
+    window.set_visible(visible);
+    true
+}
+
+pub(super) const fn needs_input_region_refresh(
+    force_region_refresh: bool,
+    stack_changed: bool,
+    window_changed: bool,
+) -> bool {
+    force_region_refresh || stack_changed || window_changed
 }
 
 pub(super) fn visible_popup_target(total_popups: usize, max_visible: usize) -> usize {

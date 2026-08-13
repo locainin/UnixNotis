@@ -3,6 +3,7 @@
 //! Centralizes `UiEvent` handling so UI state transitions remain coherent and
 //! traceable in logs
 
+use gtk::prelude::*;
 use tracing::debug;
 use unixnotis_core::PanelDebugLevel;
 
@@ -10,9 +11,31 @@ use crate::control::UiEvent;
 
 use super::{panel, UiState};
 
+pub(in crate::ui) fn connect_user_scroll_tracking(
+    scroller: &gtk::ScrolledWindow,
+    generation: std::rc::Rc<std::cell::Cell<u64>>,
+) {
+    let controller = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    controller.connect_scroll(move |_, _, delta_y| {
+        if delta_y.abs() > f64::EPSILON {
+            generation.set(generation.get().wrapping_add(1));
+        }
+        gtk::glib::Propagation::Proceed
+    });
+    scroller.add_controller(controller);
+}
+
 impl UiState {
     pub fn handle_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::Disconnected => {
+                debug!("UnixNotis control service disconnected");
+                // Old rows and state must not survive into a later daemon generation
+                self.list.clear_for_disconnect();
+                self.mark_notifications_changed();
+                self.update_state(unixnotis_core::ControlState::default());
+                self.refresh_counts();
+            }
             UiEvent::Seed {
                 state,
                 active,
@@ -25,10 +48,11 @@ impl UiState {
                 );
                 // Seed list data before applying state to keep counts aligned
                 self.list.seed(active, history);
+                self.mark_notifications_changed();
                 self.update_state(state);
                 self.refresh_counts();
             }
-            UiEvent::NotificationAdded(notification, _show_popup) => {
+            UiEvent::NotificationAdded(notification) => {
                 debug!(
                     id = notification.id,
                     app = %notification.app_name,
@@ -41,10 +65,11 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
+                self.mark_notifications_changed();
                 // Header count reflects the combined active + history totals
                 self.refresh_counts();
             }
-            UiEvent::NotificationUpdated(notification, _show_popup) => {
+            UiEvent::NotificationUpdated(notification) => {
                 debug!(
                     id = notification.id,
                     app = %notification.app_name,
@@ -57,15 +82,22 @@ impl UiState {
                     )
                 });
                 self.list.add_or_update(notification, true);
+                self.mark_notifications_changed();
                 // Updates may shift groups; refresh count even when list is stable
                 self.refresh_counts();
             }
-            UiEvent::NotificationClosed(id, reason) => {
-                debug!(id, ?reason, "notification closed");
+            UiEvent::NotificationClosed(key, reason) => {
+                debug!(
+                    id = key.id,
+                    generation = key.generation,
+                    ?reason,
+                    "notification closed"
+                );
                 self.log_debug(PanelDebugLevel::Verbose, || {
-                    format!("notification closed: #{id} ({reason:?})")
+                    format!("notification closed: #{} ({reason:?})", key.id)
                 });
-                self.list.mark_closed(id, reason);
+                self.list.mark_closed(key, reason);
+                self.mark_notifications_changed();
                 // Marking closed can move entries between active/history buckets
                 self.refresh_counts();
             }
@@ -98,7 +130,8 @@ impl UiState {
                 debug!(app = %key, "group toggled");
                 self.log_debug(PanelDebugLevel::Verbose, || format!("group toggled: {key}"));
                 self.list.toggle_group(&key);
-                // Toggling can change stacked visibility; counts reflect total entries
+                self.mark_notifications_changed();
+                // Toggling can change grouped visibility; counts reflect total entries
                 self.refresh_counts();
             }
             UiEvent::MediaUpdated(infos) => {
@@ -148,7 +181,7 @@ impl UiState {
                 self.work_area = reserved;
                 // Re-apply panel sizing only when the work area actually changes
                 // Avoids redundant calls that can cascade into GTK relayout passes
-                panel::apply_panel_config(&self.panel, &self.config, self.work_area);
+                panel::geometry::apply_panel_config(&self.panel, &self.config, self.work_area);
                 let message = format!("work area update: {:?}", self.work_area);
                 self.log_debug(PanelDebugLevel::Info, move || message);
             }
@@ -164,9 +197,12 @@ impl UiState {
             }
             UiEvent::FilterChanged(query) => {
                 if self.list.set_filter_query(&query) {
+                    self.mark_notifications_changed();
                     self.log_debug(PanelDebugLevel::Verbose, || {
                         format!("notification filter updated: '{query}'")
                     });
+                    // Counts derive from list data and stay accurate before the GTK rebuild lands
+                    self.refresh_counts();
                 }
             }
             UiEvent::WidgetsCollapsed(collapsed) => {
@@ -196,10 +232,147 @@ impl UiState {
     }
 
     pub fn flush_list_rebuild(&mut self) {
+        self.flush_list_rebuild_with_policy(ScrollResetPolicy::NearTopOnly);
+    }
+
+    pub(in crate::ui) fn flush_list_rebuild_with_policy(&mut self, policy: ScrollResetPolicy) {
+        let snap_to_top = self.panel_visible && should_snap_to_top(&self.panel.sections.scroller);
+        let generation = self.notification_rebuild_generation.get().wrapping_add(1);
+        self.notification_rebuild_generation.set(generation);
         self.list.flush_rebuild();
+        if matches!(policy, ScrollResetPolicy::Force) || snap_to_top {
+            reset_notification_scroll(
+                &self.panel.sections.scroller,
+                self.notification_rebuild_generation.clone(),
+                generation,
+                self.scroll_user_generation.clone(),
+                self.scroll_user_generation.get(),
+                policy,
+            );
+        }
+    }
+
+    pub(in crate::ui) const fn mark_notifications_changed(&mut self) {
+        if !self.panel_visible {
+            self.notifications_changed_while_hidden = true;
+        }
     }
 
     pub const fn list_needs_rebuild(&self) -> bool {
         self.list.needs_rebuild()
     }
 }
+
+fn should_snap_to_top(scroller: &gtk::ScrolledWindow) -> bool {
+    let adjustment = scroller.vadjustment();
+    should_snap_to_top_value(adjustment.value(), adjustment.lower())
+}
+
+const fn should_snap_to_top_value(value: f64, lower: f64) -> bool {
+    value <= lower + 18.0
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::ui) enum ScrollResetPolicy {
+    // Live updates preserve a meaningful position once the user scrolls away
+    NearTopOnly,
+    // Hidden reseeds invalidate the old position and must show the first row
+    Force,
+}
+
+pub(in crate::ui) fn reset_notification_scroll(
+    scroller: &gtk::ScrolledWindow,
+    rebuild_generation: std::rc::Rc<std::cell::Cell<u64>>,
+    expected_generation: u64,
+    scroll_user_generation: std::rc::Rc<std::cell::Cell<u64>>,
+    expected_user_generation: u64,
+    policy: ScrollResetPolicy,
+) {
+    let scroller = scroller.clone();
+    gtk::glib::idle_add_local_once(move || {
+        // A mapped panel gets a frame callback after recycled rows are allocated
+        if scroller.is_mapped() {
+            scroller.add_tick_callback(move |scroller, _clock| {
+                apply_scroll_reset_after_allocation(
+                    scroller,
+                    &rebuild_generation,
+                    expected_generation,
+                    &scroll_user_generation,
+                    expected_user_generation,
+                    policy,
+                )
+            });
+            return;
+        }
+
+        // Unmapped unit-test widgets have no frame clock; apply only with valid geometry
+        let adjustment = scroller.vadjustment();
+        if adjustment.page_size() > 0.0
+            && should_apply_scroll_reset(
+                rebuild_generation.get(),
+                expected_generation,
+                scroll_user_generation.get(),
+                expected_user_generation,
+                &scroller,
+                policy,
+            )
+        {
+            adjustment.set_value(adjustment.lower());
+        }
+    });
+}
+
+fn apply_scroll_reset_after_allocation(
+    scroller: &gtk::ScrolledWindow,
+    rebuild_generation: &std::rc::Rc<std::cell::Cell<u64>>,
+    expected_generation: u64,
+    scroll_user_generation: &std::rc::Rc<std::cell::Cell<u64>>,
+    expected_user_generation: u64,
+    policy: ScrollResetPolicy,
+) -> gtk::glib::ControlFlow {
+    // A tick runs after GTK has had a chance to measure recycled rows
+    let adjustment = scroller.vadjustment();
+    if adjustment.page_size() <= 0.0 {
+        // Unmapped panels can need another frame before allocation is valid
+        return gtk::glib::ControlFlow::Continue;
+    }
+
+    // Layout work can yield to a real user scroll before this callback runs
+    // Recheck both the rebuild and scroll state so stale work cannot win
+    if should_apply_scroll_reset(
+        rebuild_generation.get(),
+        expected_generation,
+        scroll_user_generation.get(),
+        expected_user_generation,
+        scroller,
+        policy,
+    ) {
+        adjustment.set_value(adjustment.lower());
+    }
+    gtk::glib::ControlFlow::Break
+}
+
+fn should_apply_scroll_reset(
+    current_generation: u64,
+    expected_generation: u64,
+    current_user_generation: u64,
+    expected_user_generation: u64,
+    scroller: &gtk::ScrolledWindow,
+    policy: ScrollResetPolicy,
+) -> bool {
+    if !scroll_reset_generation_is_current(current_generation, expected_generation)
+        || !scroll_reset_generation_is_current(current_user_generation, expected_user_generation)
+    {
+        return false;
+    }
+
+    matches!(policy, ScrollResetPolicy::Force) || should_snap_to_top(scroller)
+}
+
+const fn scroll_reset_generation_is_current(current: u64, expected: u64) -> bool {
+    current == expected
+}
+
+#[cfg(test)]
+#[path = "events/tests/mod.rs"]
+mod tests;

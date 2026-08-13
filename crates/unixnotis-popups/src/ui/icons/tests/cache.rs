@@ -88,3 +88,19 @@ fn texture_cache_keeps_sizes_separate() {
     assert!(cache.get(&path, 20).is_some());
     assert!(cache.get(&path, 32).is_some());
 }
+
+#[gtk::test]
+fn texture_cache_clear_discards_all_path_and_size_entries() {
+    let mut cache = TextureCache::new(4);
+    let path = PathBuf::from("icon-test.png");
+    let bytes = glib::Bytes::from_owned(vec![255; 4]);
+    let texture = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &bytes, 4)
+        .upcast::<gdk::Texture>();
+
+    cache.insert(path.clone(), 20, texture.clone());
+    cache.insert(path.clone(), 32, texture);
+    cache.clear();
+
+    assert!(cache.get(&path, 20).is_none());
+    assert!(cache.get(&path, 32).is_none());
+}

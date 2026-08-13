@@ -7,7 +7,7 @@ use gtk::prelude::*;
 use super::super::{icons, media, notifications, panel, widgets, UiStateInit};
 
 pub(super) fn build_notification_list(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
     icon_resolver: Rc<icons::IconResolver>,
 ) -> notifications::NotificationList {
@@ -16,8 +16,13 @@ pub(super) fn build_notification_list(
         max_entries: init.config.history.max_entries,
         transient_to_history: init.config.history.transient_to_history,
         show_notification_metadata: init.config.panel.notification_metadata_visible,
+        notification_metadata: init.config.panel.notification_metadata.clone(),
+        notification_corners: init.config.theme.notification_corners,
         show_notification_thumbnails: init.config.panel.notification_thumbnails_visible,
+        show_notification_avatars: init.config.panel.notification_avatars_visible,
+        reduced_motion: init.config.panel.reduced_motion,
         empty_text: init.config.panel.empty_text.clone(),
+        no_matching_text: init.config.panel.no_matching_text.clone(),
         empty_offset_top: init.config.panel.empty_offset_top,
         empty_alignment: init.config.panel.empty_alignment,
     };
@@ -25,7 +30,7 @@ pub(super) fn build_notification_list(
     // Notification list owns row virtualization and icon resolution
     // Startup only passes the resolved policy and shared channels
     notifications::NotificationList::new(
-        panel.scroller.clone(),
+        panel.sections.scroller.clone(),
         init.command_tx.clone(),
         init.event_tx.clone(),
         icon_resolver,
@@ -34,22 +39,24 @@ pub(super) fn build_notification_list(
 }
 
 pub(super) fn build_media_widget(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
 ) -> Option<media::MediaWidget> {
-    let panel_width = panel::requested_panel_width(&panel.root);
+    let panel_width = panel::geometry::requested_panel_width(&panel.root);
     let media = init.media_handle.as_ref().map(|handle| {
-        media::MediaWidget::new(
-            &panel.media_container,
+        let media = media::MediaWidget::new(
+            &panel.sections.media_container,
             handle.clone(),
             panel_width,
             &init.config.media,
-        )
+        );
+        media.set_reduced_motion(init.config.panel.reduced_motion);
+        media
     });
 
     if media.is_none() {
         // Hidden container keeps layout stable without reserving blank media space
-        panel.media_container.set_visible(false);
+        panel.sections.media_container.set_visible(false);
     }
     media
 }
@@ -65,7 +72,7 @@ pub(super) struct ExtraWidgets {
 }
 
 pub(super) fn build_widget_sections(
-    panel: &panel::PanelWidgets,
+    panel: &panel::widgets::PanelWidgets,
     init: &UiStateInit,
     icon_resolver: &unixnotis_core::IconAssetResolver,
 ) -> ExtraWidgets {
@@ -99,11 +106,11 @@ pub(super) fn icon_resolver_for_widgets(
     }
 }
 
-pub(super) fn has_visible_widget_section(panel: &panel::PanelWidgets) -> bool {
+pub(super) fn has_visible_widget_section(panel: &panel::widgets::PanelWidgets) -> bool {
     // Empty-state spacing depends on whether any upper panel section is visible
-    panel.quick_controls.get_visible()
-        || panel.media_container.get_visible()
-        || panel.toggle_container.get_visible()
-        || panel.stat_container.get_visible()
-        || panel.card_container.get_visible()
+    panel.sections.quick_controls.get_visible()
+        || panel.sections.media_container.get_visible()
+        || panel.sections.toggle_container.get_visible()
+        || panel.sections.stat_container.get_visible()
+        || panel.sections.card_container.get_visible()
 }

@@ -13,6 +13,7 @@ fn make_info(status: &str) -> MediaInfo {
         identity: "Spotify".to_string(),
         browser_family: None,
         owner_pid: None,
+        source_pid_hint: None,
         title: "track".to_string(),
         artist: "artist".to_string(),
         playback_status: status.to_string(),

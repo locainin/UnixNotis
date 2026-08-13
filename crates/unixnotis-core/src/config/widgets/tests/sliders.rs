@@ -1,9 +1,9 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "TOML parsing preserves these exactly representable slider values"
 )]
 
-use crate::{NumericParseMode, SliderWidgetConfig, WidgetsConfig};
+use crate::{CommandSpec, NumericParseMode, SliderWidgetConfig, WidgetsConfig};
 
 #[test]
 fn default_slider_widgets_keep_stock_commands() {
@@ -11,11 +11,11 @@ fn default_slider_widgets_keep_stock_commands() {
 
     assert!(widgets.volume.enabled);
     assert_eq!(widgets.volume.label, "Volume");
-    assert_eq!(widgets.volume.get_cmd, SliderWidgetConfig::WPCTL_GET);
-    assert_eq!(widgets.volume.set_cmd, SliderWidgetConfig::WPCTL_SET);
+    assert_eq!(widgets.volume.get_cmd, SliderWidgetConfig::wpctl_get());
+    assert_eq!(widgets.volume.set_cmd, SliderWidgetConfig::wpctl_set());
     assert_eq!(
-        widgets.volume.toggle_cmd.as_deref(),
-        Some(SliderWidgetConfig::WPCTL_TOGGLE)
+        widgets.volume.toggle_cmd,
+        Some(SliderWidgetConfig::wpctl_toggle())
     );
     assert_eq!(widgets.volume.watch_cmd, None);
     assert_eq!(widgets.volume.segments, 10);
@@ -25,8 +25,14 @@ fn default_slider_widgets_keep_stock_commands() {
 
     assert!(widgets.brightness.enabled);
     assert_eq!(widgets.brightness.label, "Brightness");
-    assert_eq!(widgets.brightness.get_cmd, "brightnessctl -m");
-    assert_eq!(widgets.brightness.set_cmd, "brightnessctl s {value}%");
+    assert_eq!(
+        widgets.brightness.get_cmd,
+        CommandSpec::direct("brightnessctl", ["-m"])
+    );
+    assert_eq!(
+        widgets.brightness.set_cmd,
+        CommandSpec::direct("brightnessctl", ["s", "{value}%"])
+    );
     assert_eq!(widgets.brightness.watch_cmd, None);
     assert_eq!(widgets.brightness.segments, 10);
     assert!(widgets.brightness.show_sublabels);
@@ -58,10 +64,10 @@ fn custom_slider_config_parses_numeric_bounds_and_labels() {
         label = "Mic"
         icon = "audio-input-microphone-symbolic"
         icon_muted = "microphone-disabled-symbolic"
-        get_cmd = "scripts/mic get"
-        set_cmd = "scripts/mic set {value}"
-        toggle_cmd = "scripts/mic toggle"
-        watch_cmd = "scripts/mic watch"
+        get_cmd = { mode = "direct", program = "scripts/mic", args = ["get"] }
+        set_cmd = { mode = "direct", program = "scripts/mic", args = ["set", "{value}"] }
+        toggle_cmd = { mode = "direct", program = "scripts/mic", args = ["toggle"] }
+        watch_cmd = { mode = "direct", program = "scripts/mic", args = ["watch"] }
         min = -12.5
         max = 12.5
         step = 0.5
@@ -81,8 +87,14 @@ fn custom_slider_config_parses_numeric_bounds_and_labels() {
         slider.icon_muted.as_deref(),
         Some("microphone-disabled-symbolic")
     );
-    assert_eq!(slider.toggle_cmd.as_deref(), Some("scripts/mic toggle"));
-    assert_eq!(slider.watch_cmd.as_deref(), Some("scripts/mic watch"));
+    assert_eq!(
+        slider.toggle_cmd,
+        Some(CommandSpec::direct("scripts/mic", ["toggle"]))
+    );
+    assert_eq!(
+        slider.watch_cmd,
+        Some(CommandSpec::direct("scripts/mic", ["watch"]))
+    );
     assert_eq!(slider.min, -12.5);
     assert_eq!(slider.max, 12.5);
     assert_eq!(slider.step, 0.5);

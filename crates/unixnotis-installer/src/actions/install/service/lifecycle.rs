@@ -1,6 +1,6 @@
 //! Service lifecycle command helpers
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 
 use crate::paths::format_with_home;
 use crate::service_manager::CommandSpec;
@@ -19,7 +19,7 @@ fn service_start_mode(ctx: &ActionContext) -> ServiceStartMode {
     service_start_mode_from_enabled(
         ctx.install_state
             .as_ref()
-            .map(crate::actions::install_state::InstallState::service_enabled),
+            .map(|state| state.service_enabled),
     )
 }
 
@@ -35,6 +35,18 @@ pub(in crate::actions::install) fn service_start_mode_from_enabled(
 }
 
 pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) -> Result<()> {
+    if let Some(spec) = ctx.paths.service.prepare_start_command() {
+        // A runtime mask is temporary session state and should not defeat explicit installation
+        log_line(
+            ctx,
+            format!(
+                "Clearing temporary service mask for {}",
+                ctx.paths.service.service_name()
+            ),
+        );
+        run_command_spec(ctx, &spec).context("clear temporary service mask")?;
+    }
+
     match service_start_mode(ctx) {
         ServiceStartMode::EnableAndStart => {
             // First install still needs the symlink creation done by `enable`
@@ -42,11 +54,7 @@ pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) ->
                 ctx,
                 format!("Enabling and starting {}", ctx.paths.service.service_name()),
             );
-            let spec = ctx
-                .paths
-                .service
-                .enable_now_command()
-                .ok_or_else(|| anyhow!("service manager cannot enable and start service"))?;
+            let spec = ctx.paths.service.enable_now_command();
             run_command_spec(ctx, &spec)
         }
         ServiceStartMode::StartOnly => {
@@ -55,11 +63,7 @@ pub(in crate::actions::install) fn run_service_start(ctx: &mut ActionContext) ->
                 ctx,
                 format!("Starting {}", ctx.paths.service.service_name()),
             );
-            let spec = ctx
-                .paths
-                .service
-                .start_command()
-                .ok_or_else(|| anyhow!("service manager cannot start service"))?;
+            let spec = ctx.paths.service.start_command();
             run_command_spec(ctx, &spec)
         }
     }

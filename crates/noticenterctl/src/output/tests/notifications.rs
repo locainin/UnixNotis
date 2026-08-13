@@ -7,17 +7,29 @@ fn sample_notification() -> NotificationView {
     // Bad bytes on purpose
     NotificationView {
         id: 7,
+        generation: 1,
         app_name: "mailer\n\x1b[31m".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: "mailer\n\x1b[31m".to_string(),
+            badge_icon: "mailer".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: "subject\rline".to_string(),
         body: "body\ttext\nnext".to_string(),
         actions: vec![Action {
             key: "open".to_string(),
             label: "Open".to_string(),
         }],
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Deny,
         urgency: 1,
+        category: String::new(),
         is_transient: false,
+        received_at_unix_seconds: 0,
         // CLI formatting only needs the lightweight transport fields
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 

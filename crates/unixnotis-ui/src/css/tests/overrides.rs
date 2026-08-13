@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::{env, fs};
 
 use super::{build_panel_overrides, build_popup_overrides, build_widgets_overrides};
-use unixnotis_core::{gtk_css_features_for_version, ThemeConfig};
+use unixnotis_core::ThemeConfig;
 
 #[test]
 fn base_overrides_clamp_alpha_values() {
@@ -17,8 +17,7 @@ fn base_overrides_clamp_alpha_values() {
         ..ThemeConfig::default()
     };
 
-    let overrides =
-        super::build_base_overrides_for_runtime(&theme, gtk_css_features_for_version(4, 15));
+    let overrides = super::build_base_overrides(&theme);
     let surface = format!(
         "alpha(@unixnotis-surface-base, {})",
         1.0_f32.clamp(0.0, 1.0)
@@ -46,16 +45,15 @@ fn base_overrides_can_emit_modern_custom_properties() {
         ..ThemeConfig::default()
     };
 
-    let overrides =
-        super::build_base_overrides_for_runtime(&theme, gtk_css_features_for_version(4, 16));
+    let overrides = super::build_base_overrides(&theme);
     assert!(overrides.contains(":root {"));
     assert!(overrides.contains("--unixnotis-border-width: 3px;"));
     assert!(overrides.contains("--unixnotis-card-radius: 18px;"));
     assert!(overrides.contains("--unixnotis-card-alpha: 0.52;"));
     assert!(overrides.contains("--unixnotis-panel-header-radius: 18px;"));
-    assert!(overrides.contains("--unixnotis-notification-card-radius: 20px;"));
+    assert!(overrides.contains("--unixnotis-notification-card-radius: 18px;"));
     assert!(overrides.contains("--unixnotis-stat-card-radius: 18px;"));
-    assert!(overrides.contains("--unixnotis-panel-card-padding-y: 10px;"));
+    assert!(overrides.contains("--unixnotis-panel-card-padding-y: 9px;"));
     assert!(overrides.contains("--unixnotis-popup-reveal-duration: 200ms;"));
     assert!(overrides.contains("--unixnotis-accent-color: @unixnotis-accent;"));
     assert!(overrides.contains("@define-color unixnotis-surface alpha(@unixnotis-surface-base,"));
@@ -108,23 +106,8 @@ fn popup_overrides_use_theme_values() {
 }
 
 #[test]
-fn generated_override_css_loads_without_parse_errors_for_legacy_runtime() {
-    // Old GTK should still accept the generated fallback path cleanly
-    let theme = ThemeConfig::default();
-    let css = format!(
-        "{}\n{}\n{}\n{}",
-        super::build_base_overrides_for_runtime(&theme, gtk_css_features_for_version(4, 15)),
-        build_panel_overrides(&theme),
-        build_widgets_overrides(&theme),
-        build_popup_overrides(&theme),
-    );
-
-    assert_css_validates_in_gtk(&css);
-}
-
-#[test]
-fn generated_override_css_loads_without_parse_errors_for_modern_runtime() {
-    // New GTK should also accept the additive custom property path cleanly
+fn generated_override_css_loads_without_parse_errors() {
+    // The supported GTK baseline parses the complete generated token set
     let theme = ThemeConfig {
         border_width: 2,
         card_radius: 18,
@@ -133,7 +116,7 @@ fn generated_override_css_loads_without_parse_errors_for_modern_runtime() {
     };
     let css = format!(
         "{}\n{}\n{}\n{}",
-        super::build_base_overrides_for_runtime(&theme, gtk_css_features_for_version(4, 16)),
+        super::build_base_overrides(&theme),
         build_panel_overrides(&theme),
         build_widgets_overrides(&theme),
         build_popup_overrides(&theme),

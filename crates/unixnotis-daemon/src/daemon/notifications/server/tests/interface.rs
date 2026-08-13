@@ -27,7 +27,7 @@ async fn get_capabilities_returns_freedesktop_capability_contract() {
 
     assert!(capabilities.contains(&"actions".to_string()));
     assert!(capabilities.contains(&"body".to_string()));
-    assert!(capabilities.contains(&"body-markup".to_string()));
+    assert!(!capabilities.contains(&"body-markup".to_string()));
     assert!(capabilities.contains(&"icon-static".to_string()));
     assert!(!capabilities.contains(&"xyzzy".to_string()));
 }
@@ -67,7 +67,7 @@ async fn notify_wrapper_stores_notification_and_returns_assigned_id() {
             "summary".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             header.clone(),
             0,
         )
@@ -99,7 +99,7 @@ async fn close_notification_wrapper_removes_owned_active_notification() {
             "summary".to_string(),
             "body".to_string(),
             Vec::new(),
-            HashMap::new(),
+            HashMap::new().into(),
             header.clone(),
             0,
         )

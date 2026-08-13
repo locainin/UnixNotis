@@ -1,4 +1,4 @@
-use super::{MAX_BORDER_WIDTH, MAX_CARD_RADIUS};
+use super::{MAX_BORDER_WIDTH, MAX_CARD_RADIUS, MAX_CORNER_CUT};
 use crate::{Config, ThemeConfig};
 
 pub(super) fn sanitize_theme_config(config: &mut Config) {
@@ -38,6 +38,26 @@ pub(super) fn sanitize_theme_config(config: &mut Config) {
     // CSS generation reads these directly, so keep values inside simple visual bounds
     config.theme.border_width = config.theme.border_width.min(MAX_BORDER_WIDTH);
     config.theme.card_radius = config.theme.card_radius.min(MAX_CARD_RADIUS);
+    config.theme.notification_corners.top_left = config
+        .theme
+        .notification_corners
+        .top_left
+        .min(MAX_CORNER_CUT);
+    config.theme.notification_corners.top_right = config
+        .theme
+        .notification_corners
+        .top_right
+        .min(MAX_CORNER_CUT);
+    config.theme.notification_corners.bottom_right = config
+        .theme
+        .notification_corners
+        .bottom_right
+        .min(MAX_CORNER_CUT);
+    config.theme.notification_corners.bottom_left = config
+        .theme
+        .notification_corners
+        .bottom_left
+        .min(MAX_CORNER_CUT);
 }
 
 const fn clamp_alpha(value: &mut f32, fallback: f32) {

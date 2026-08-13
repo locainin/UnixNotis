@@ -22,7 +22,8 @@ struct MarqueeState {
     last_tick: Option<Instant>,
     hold_until: Option<Instant>,
     reset_pending: bool,
-    enabled: bool,
+    overflows: bool,
+    reduced_motion: bool,
     is_ticking: bool,
     is_mapped: bool,
     tick_source: Option<glib::SourceId>,
@@ -73,7 +74,7 @@ impl MarqueeLabel {
 
         let state = Rc::new(RefCell::new(MarqueeState {
             reset_pending: true,
-            enabled: false,
+            overflows: false,
             is_mapped: root.is_mapped(),
             tick_source: None,
             char_limit,
@@ -95,7 +96,7 @@ impl MarqueeLabel {
             move |_| {
                 let mut state = mapped_state.borrow_mut();
                 state.is_mapped = true;
-                let should_start = state.enabled && !state.is_ticking;
+                let should_start = marquee_can_start(&state);
                 drop(state);
                 if should_start {
                     start_ticking_inner(mapped_state.clone(), mapped_label.clone());
@@ -112,13 +113,7 @@ impl MarqueeLabel {
                 state.is_mapped = false;
                 // Stop ticking immediately when the widget is unmapped to avoid background work
                 // Unmapped widgets should not keep timers alive
-                if let Some(source_id) = state.tick_source.take() {
-                    source_id.remove();
-                    state.is_ticking = false;
-                    state.last_tick = None;
-                    state.hold_until = None;
-                    perf_probe::marquee_stop();
-                }
+                stop_ticking_state(&mut state);
             }
         ));
 
@@ -139,16 +134,15 @@ impl MarqueeLabel {
     }
 
     fn set_text_inner(&self, text: &str, force: bool) {
+        // Identical media snapshots avoid both allocation and Pango layout measurement
+        if !marquee_text_needs_update(&self.state.borrow().full_text, text, force) {
+            return;
+        }
         // Pango measures rendered pixels so short wide-glyph titles still activate scrolling
         let text_width = self.label.create_pango_layout(Some(text)).pixel_size().0;
         let mut state = self.state.borrow_mut();
-        // Avoid resetting the marquee when the full text is identical
-        // This prevents unnecessary redraws and keeps CPU usage stable
-        if !force && state.full_text == text {
-            return;
-        }
         let char_limit = state.char_limit;
-        state.enabled = marquee_should_tick(
+        state.overflows = marquee_should_tick(
             char_limit,
             text.chars().count(),
             text_width,
@@ -159,7 +153,8 @@ impl MarqueeLabel {
         state.hold_until = None;
         state.last_tick = None;
         state.full_text = text.to_string();
-        state.buffer = if state.enabled {
+        let animate = state.overflows && !state.reduced_motion;
+        state.buffer = if animate {
             let padded = format!("{text}   ");
             padded.chars().collect()
         } else {
@@ -167,7 +162,7 @@ impl MarqueeLabel {
         };
         state.last_rendered_offset = usize::MAX;
 
-        let enabled = state.enabled;
+        let enabled = animate;
         let mapped = state.is_mapped;
         let ticking = state.is_ticking;
 
@@ -206,18 +201,59 @@ impl MarqueeLabel {
         self.update_limits(max_width, char_limit);
     }
 
+    pub fn set_reduced_motion(&self, reduced_motion: bool) {
+        let mut state = self.state.borrow_mut();
+        if state.reduced_motion == reduced_motion {
+            return;
+        }
+
+        state.reduced_motion = reduced_motion;
+        state.reset_pending = true;
+        state.offset = 0.0;
+        state.last_tick = None;
+        state.hold_until = None;
+        state.last_rendered_offset = usize::MAX;
+
+        if reduced_motion {
+            // Stop before restoring text so no queued callback can move the stable label again
+            stop_ticking_state(&mut state);
+            state.buffer.clear();
+            self.label.set_text(&state.full_text);
+            return;
+        }
+
+        if state.overflows {
+            let padded = format!("{}   ", state.full_text);
+            state.buffer = padded.chars().collect();
+            render_visible(&mut state, 0);
+            self.label.set_text(&state.render_buf);
+        } else {
+            self.label.set_text(&state.full_text);
+        }
+        drop(state);
+
+        self.start_ticking();
+    }
+
     fn start_ticking(&self) {
         start_ticking_inner(self.state.clone(), self.label.clone());
     }
 
     fn stop_ticking(&self) {
         let mut state = self.state.borrow_mut();
-        if let Some(source_id) = state.tick_source.take() {
-            source_id.remove();
-        }
-        state.is_ticking = false;
-        state.last_tick = None;
-        state.hold_until = None;
+        stop_ticking_state(&mut state);
+    }
+}
+
+fn stop_ticking_state(state: &mut MarqueeState) {
+    let was_ticking = state.is_ticking;
+    if let Some(source_id) = state.tick_source.take() {
+        source_id.remove();
+    }
+    state.is_ticking = false;
+    state.last_tick = None;
+    state.hold_until = None;
+    if was_ticking {
         perf_probe::marquee_stop();
     }
 }
@@ -231,10 +267,26 @@ fn marquee_should_tick(
     char_limit > 0 && (char_count > char_limit || text_width > max_width.max(0))
 }
 
+fn marquee_text_needs_update(current: &str, next: &str, force: bool) -> bool {
+    force || current != next
+}
+
+const fn marquee_can_start(state: &MarqueeState) -> bool {
+    !state.is_ticking
+        && state.tick_source.is_none()
+        && !state.reduced_motion
+        && state.overflows
+        && state.is_mapped
+}
+
+const fn marquee_should_stop(state: &MarqueeState) -> bool {
+    !state.overflows || state.reduced_motion || !state.is_mapped
+}
+
 fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
     {
         let mut state = state.borrow_mut();
-        if state.is_ticking {
+        if !marquee_can_start(&state) {
             return;
         }
         state.is_ticking = true;
@@ -247,11 +299,12 @@ fn start_ticking_inner(state: Rc<RefCell<MarqueeState>>, label: gtk::Label) {
         perf_probe::marquee_tick();
         let mut state = state_tick.borrow_mut();
 
-        if !state.enabled || !state.is_mapped {
+        if marquee_should_stop(&state) {
             state.is_ticking = false;
             state.tick_source = None;
             state.last_tick = None;
             state.hold_until = None;
+            perf_probe::marquee_stop();
             return glib::ControlFlow::Break;
         }
 

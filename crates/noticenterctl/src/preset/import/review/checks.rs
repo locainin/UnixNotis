@@ -49,8 +49,8 @@ pub(in crate::preset) fn validate_imported_theme_paths_stay_in_root(
     // The bundle config is trusted during post-import setup, so its theme targets must stay local
     let config_text =
         std::str::from_utf8(config_bytes).context("preset config.toml is not valid UTF-8")?;
-    let config: Config =
-        toml::from_str(config_text).context("parse bundled config.toml for import validation")?;
+    let config =
+        Config::parse(config_text).context("parse bundled config.toml for import validation")?;
     validate_config_theme_paths_stay_in_root(config_dir, &config)
 }
 
@@ -205,7 +205,7 @@ fn collect_explicit_exec_commands_from_config_bytes(
         .filter(|reference| explicit_slots.contains(&reference.slot))
         .map(|reference| ImportedExecCommand {
             slot: reference.slot,
-            command: reference.command,
+            command: reference.command.display_lossy(),
         })
         .collect())
 }

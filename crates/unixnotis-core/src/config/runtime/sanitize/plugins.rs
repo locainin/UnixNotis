@@ -4,7 +4,6 @@ use super::{
     super::super::{Config, SliderWidgetConfig, WidgetPluginConfig},
     MAX_CARD_HEIGHT,
 };
-use crate::util;
 
 pub(super) const MIN_PLUGIN_TIMEOUT_MS: u64 = 100;
 pub(super) const MAX_PLUGIN_TIMEOUT_MS: u64 = 30_000;
@@ -114,8 +113,7 @@ fn sanitize_widget_plugin(
         return;
     }
 
-    let command = plugin_cfg.command.trim();
-    if command.is_empty() {
+    if plugin_cfg.command.is_empty() {
         // Empty commands only look configured but can never run
         warn!(
             widget_type,
@@ -124,7 +122,7 @@ fn sanitize_widget_plugin(
         *plugin = None;
         return;
     }
-    if !util::is_simple_command(command) {
+    if plugin_cfg.command.uses_shell_command_string() {
         // Shell syntax is not allowed in the plugin command field
         warn!(
             widget_type,
@@ -133,8 +131,6 @@ fn sanitize_widget_plugin(
         *plugin = None;
         return;
     }
-    plugin_cfg.command = command.to_string();
-
     if plugin_cfg.timeout_ms == 0 {
         // Zero timeout falls back to the canonical plugin default
         plugin_cfg.timeout_ms = WidgetPluginConfig::default().timeout_ms;

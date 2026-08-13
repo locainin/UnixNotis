@@ -3,7 +3,7 @@
 /// Source used for the CSS bytes passed to GTK
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::css) enum CssFileLoadSource {
-    /// Non-empty custom CSS was read from disk
+    /// Non-empty configured CSS was read from disk
     Custom,
     /// An intentionally empty file used embedded defaults
     EmptyFallback,
@@ -42,5 +42,5 @@ impl CssFileLoadResult {
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/model.rs"]
+#[path = "tests/model.rs"]
 mod tests;

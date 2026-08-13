@@ -7,7 +7,8 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
-use super::super::super::service::{install_service, uninstall_service};
+use super::super::super::service::flow::install_service;
+use super::super::super::service::uninstall_service;
 use super::super::support::{test_context, test_root};
 use super::flow_support::{flow_env, flow_paths, lock_env, write_fake_tools, FakeToolMode};
 
@@ -102,7 +103,8 @@ fn every_backend_wrong_primary_artifact_shape_fails_without_mutation() {
         assert!(
             err.to_string().contains("symlink")
                 || err.to_string().contains("unsafe")
-                || err.to_string().contains("not managed"),
+                || err.to_string().contains("not managed")
+                || err.to_string().contains("unmarked"),
             "{name} error should explain the unsafe shape: {err}"
         );
         assert_eq!(

@@ -1,45 +1,56 @@
 //! Icon source selection and synchronous cache lookup
 
-use std::rc::Rc;
-
 use gtk::prelude::*;
 use unixnotis_core::NotificationView;
 
-use super::cache::{
-    icon_key_for_image, icon_key_for_name, icon_key_for_path, set_image_key, CachedPaintable,
-    IconKey,
-};
+use super::cache::{icon_key_for_name, icon_key_for_path, set_image_key, CachedPaintable};
 use super::resolver::IconResolverInner;
 use super::theme::{
-    collect_icon_candidates, file_path_from_hint, image_data_texture, resolve_icon_source,
+    collect_icon_candidates, image_data_texture, image_data_texture_for_data, resolve_icon_source,
     IconSource,
 };
 use super::types::{IconDecodeRequest, IconResolution};
 
 impl IconResolverInner {
-    pub(super) fn apply_icon(
+    pub(super) fn apply_sender_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        // The daemon has already decoded and bounded this sender-provided raster
+        if !matches!(
+            notification.image.sender_visual_role,
+            unixnotis_core::NotificationVisualRole::ConversationAvatar
+                | unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon
+        ) {
+            image.set_visible(false);
+            return;
+        }
+        if let Some(texture) = image_data_texture_for_data(&notification.image.sender_visual) {
+            image.set_paintable(Some(&texture));
+            image.set_visible(true);
+            return;
+        }
+        image.set_visible(false);
+    }
+
+    pub(super) fn apply_content_visual(&self, image: &gtk::Image, notification: &NotificationView) {
+        // Content pixels were bounded by the daemon before reaching GTK
+        if let Some(texture) = image_data_texture(&notification.image) {
+            image.set_paintable(Some(&texture));
+            image.set_visible(true);
+        } else {
+            image.set_visible(false);
+        }
+    }
+
+    pub(super) fn apply_badge(
         &self,
         image: &gtk::Image,
         notification: &NotificationView,
         size: i32,
         scale: i32,
     ) {
-        if let Some(resolved) = self.resolve_icon(notification, size, scale) {
-            match resolved {
-                IconResolution::Ready { key, paintable } => {
-                    set_image_key(image, key);
-                    image.set_paintable(Some(paintable.paintable()));
-                    image.set_visible(true);
-                }
-                IconResolution::Async { request } => {
-                    set_image_key(image, request.key.clone());
-                    self.enqueue(request, image);
-                    image.set_visible(false);
-                }
-            }
+        if let Some(resolved) = self.resolve_badge(notification, size, scale) {
+            self.apply_resolution(image, resolved);
             return;
         }
-
         image.set_visible(false);
     }
 
@@ -47,42 +58,12 @@ impl IconResolverInner {
         self.missing_names.borrow_mut().clear();
     }
 
-    fn resolve_icon(
+    fn resolve_badge(
         &self,
         notification: &NotificationView,
         size: i32,
         scale: i32,
     ) -> Option<IconResolution> {
-        let image = &notification.image;
-        if let Some(key) = icon_key_for_image(image, size, scale) {
-            if let Some(paintable) = self.lookup_cached(key.clone(), || {
-                image_data_texture(image).map(CachedPaintable::from_texture)
-            }) {
-                return Some(IconResolution::Ready { key, paintable });
-            }
-        }
-
-        if let Some(path) = file_path_from_hint(&image.image_path) {
-            // File paths use asynchronous decoding so disk I/O stays off GTK
-            if let Some(key) = icon_key_for_path(&path, size, scale) {
-                if let Some(paintable) = self.cache.borrow_mut().get(&key) {
-                    return Some(IconResolution::Ready { key, paintable });
-                }
-                return Some(IconResolution::Async {
-                    request: IconDecodeRequest {
-                        key,
-                        path,
-                        size,
-                        scale,
-                    },
-                });
-            }
-        }
-
-        if let Some(resolution) = self.resolve_icon_name(&image.icon_name, size, scale) {
-            return Some(resolution);
-        }
-
         let candidates = collect_icon_candidates(notification);
         for candidate in &candidates {
             if let Some(icons) = self.desktop_index.icons_for(candidate) {
@@ -99,6 +80,21 @@ impl IconResolverInner {
             }
         }
         None
+    }
+
+    fn apply_resolution(&self, image: &gtk::Image, resolved: IconResolution) {
+        match resolved {
+            IconResolution::Ready { key, paintable } => {
+                set_image_key(image, key);
+                image.set_paintable(Some(paintable.paintable()));
+                image.set_visible(true);
+            }
+            IconResolution::Async { request } => {
+                set_image_key(image, request.key.clone());
+                self.enqueue(request, image);
+                image.set_visible(false);
+            }
+        }
     }
 
     fn resolve_icon_name(&self, name: &str, size: i32, scale: i32) -> Option<IconResolution> {
@@ -146,17 +142,6 @@ impl IconResolverInner {
                 })
             }
         }
-    }
-
-    fn lookup_cached<F>(&self, key: IconKey, build: F) -> Option<Rc<CachedPaintable>>
-    where
-        F: FnOnce() -> Option<CachedPaintable>,
-    {
-        if let Some(paintable) = self.cache.borrow_mut().get(&key) {
-            return Some(paintable);
-        }
-        let paintable = build()?;
-        Some(self.cache.borrow_mut().insert(key, paintable))
     }
 }
 

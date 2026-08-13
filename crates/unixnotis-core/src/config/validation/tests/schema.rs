@@ -1,162 +1,95 @@
 use super::*;
-use crate::{PanelSection, PanelWidgetSection, WidgetDensity};
-
-const LEGACY_FIXTURE: &str = include_str!("fixtures/config-v0.toml");
-const CURRENT_PARTIAL_FIXTURE: &str = include_str!("fixtures/config-v2-partial.toml");
 
 fn deserialize_config(contents: &str) -> Result<(Config, Vec<String>), String> {
-    let (config, ignored_keys, _migrated_paths) = deserialize_config_with_migrations(contents)?;
-    Ok((config, ignored_keys))
+    deserialize_current_config(contents)
 }
 
 #[test]
-fn unversioned_fixture_migrates_to_the_legacy_layout() {
-    let (config, ignored) = deserialize_config(LEGACY_FIXTURE).expect("migrate legacy config");
+fn current_schema_parses_with_current_defaults() {
+    let input = format!("config_version = {CURRENT_CONFIG_VERSION}\n[media]\n");
+    let (config, ignored) = deserialize_config(&input).expect("parse current config");
 
     assert!(ignored.is_empty());
     assert_eq!(config.config_version, CURRENT_CONFIG_VERSION);
-    assert!(config.panel.quick_actions_label.is_empty());
-    assert_eq!(config.panel.empty_offset_top, 120);
     assert_eq!(
-        config.panel.section_order,
-        vec![PanelSection::Widgets, PanelSection::Notifications]
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::AllAdmitted
     );
-    assert_eq!(
-        config.panel.widget_order,
-        vec![
-            PanelWidgetSection::Sliders,
-            PanelWidgetSection::Media,
-            PanelWidgetSection::Toggles,
-            PanelWidgetSection::Stats,
-            PanelWidgetSection::Cards,
-        ]
-    );
-    assert_eq!(config.widgets.toggle_columns, 4);
-    assert_eq!(config.widgets.volume.segments, 0);
-    assert!(!config.widgets.volume.show_sublabels);
-    assert!(config.widgets.cards.iter().all(|card| card.enabled));
-    assert_eq!(config.media.art_size_px, 50);
 }
 
 #[test]
-fn current_partial_fixture_uses_current_defaults() {
-    let (config, ignored) =
-        deserialize_config(CURRENT_PARTIAL_FIXTURE).expect("parse current config");
+fn current_schema_preserves_explicit_values() {
+    let input = format!(
+        "config_version = {CURRENT_CONFIG_VERSION}\n[panel]\nwidth = 517\n[media]\nlocal_art_policy = \"exact_executable_only\"\nlocal_art_executable_allowlist = [\"/usr/bin/player\"]\n"
+    );
+    let (config, ignored) = deserialize_config(&input).expect("parse explicit current config");
 
     assert!(ignored.is_empty());
-    assert_eq!(config.panel.quick_actions_label, "Quick settings");
-    assert_eq!(config.panel.empty_offset_top, 24);
-    assert_eq!(config.widgets.toggle_columns, 2);
-    assert_eq!(config.widgets.volume.segments, 10);
-    assert_eq!(config.media.art_size_px, 48);
+    assert_eq!(config.panel.width, 517);
+    assert_eq!(
+        config.media.local_art_policy,
+        crate::MediaLocalArtPolicy::ExactExecutableOnly
+    );
+    assert_eq!(
+        config.media.local_art_executable_allowlist,
+        ["/usr/bin/player"]
+    );
 }
 
 #[test]
-fn future_schema_is_rejected_instead_of_guessed() {
+fn every_pre_v5_schema_is_rejected_without_migration() {
+    for version in 0..CURRENT_CONFIG_VERSION {
+        let input = if version == 0 {
+            String::new()
+        } else {
+            format!("config_version = {version}\n")
+        };
+        let error = deserialize_config(&input).expect_err("reject pre-v5 config");
+        assert_eq!(error, format!("unsupported config version {version}"));
+    }
+}
+
+#[test]
+fn future_schema_is_rejected_without_guessing() {
     let error = deserialize_config("config_version = 999\n").expect_err("reject future config");
 
-    assert!(error.contains("newer than supported"));
+    assert_eq!(error, "unsupported config version 999");
 }
 
 #[test]
-fn negative_schema_version_is_rejected_instead_of_wrapping() {
-    let error = deserialize_config("config_version = -1\n").expect_err("reject negative version");
+fn oversized_schema_version_is_rejected_without_integer_wrapping() {
+    let error = deserialize_config("config_version = 4294967296\n")
+        .expect_err("reject schema version larger than u32");
 
-    assert!(error.contains("non-negative integer"));
+    assert_eq!(error, "unsupported config version 4294967296");
 }
 
 #[test]
-fn explicit_legacy_values_remain_authoritative_during_migration() {
-    let text = "[panel]\nquick_actions_label = 'Custom'\nempty_offset_top = 77\n";
-    let (config, _) = deserialize_config(text).expect("migrate explicit values");
-
-    assert_eq!(config.panel.quick_actions_label, "Custom");
-    assert_eq!(config.panel.empty_offset_top, 77);
+fn negative_or_non_integer_schema_versions_are_rejected() {
+    for input in [
+        "config_version = -1\n",
+        "config_version = \"5\"\n",
+        "config_version = true\n",
+    ] {
+        let error = deserialize_config(input).expect_err("reject malformed schema version");
+        assert_eq!(error, "config_version must be a non-negative integer");
+    }
 }
 
 #[test]
-fn empty_unversioned_config_receives_complete_legacy_defaults() {
-    let (config, ignored) = deserialize_config("").expect("migrate empty legacy config");
-
-    assert!(ignored.is_empty());
-    assert!(config.panel.quick_actions_label.is_empty());
-    assert!(config.panel.system_status_label.is_empty());
-    assert_eq!(config.panel.empty_offset_top, 120);
-    assert_eq!(config.widgets.density, WidgetDensity::Comfortable);
-    assert_eq!(config.widgets.toggle_columns, 4);
-    assert_eq!(config.widgets.stat_columns, 2);
-    assert_eq!(config.widgets.card_columns, 2);
-    assert_eq!(config.widgets.volume.segments, 0);
-    assert_eq!(config.widgets.brightness.segments, 0);
-    assert!(config.widgets.cards.iter().all(|card| card.enabled));
-    assert_eq!(config.media.art_size_px, 50);
-    assert_eq!(config.media.text_width_floor_px, 140);
-    assert_eq!(config.media.content_spacing_px, 10);
-    assert_eq!(config.media.control_spacing_px, 6);
-    assert_eq!(config.media.navigation_spacing_px, 6);
-}
-
-#[test]
-fn legacy_widgets_without_slider_tables_receive_slider_compatibility() {
-    let (config, _) = deserialize_config("[widgets]\ntoggle_columns = 3\n")
-        .expect("migrate legacy widgets without sliders");
-
-    // Explicit layout remains authoritative while omitted slider visuals stay historic
-    assert_eq!(config.widgets.toggle_columns, 3);
-    assert_eq!(config.widgets.volume.segments, 0);
-    assert!(!config.widgets.volume.show_sublabels);
-    assert!(config.widgets.volume.sublabel_min.is_empty());
-    assert!(config.widgets.volume.sublabel_max.is_empty());
-    assert_eq!(config.widgets.brightness.segments, 0);
-    assert!(!config.widgets.brightness.show_sublabels);
-    assert!(config.widgets.brightness.sublabel_min.is_empty());
-    assert!(config.widgets.brightness.sublabel_max.is_empty());
-}
-
-#[test]
-fn legacy_config_without_panel_table_receives_panel_compatibility() {
-    let (config, _) = deserialize_config("[general]\ndnd_default = true\n")
-        .expect("migrate legacy config without panel");
-
-    assert!(config.panel.quick_actions_label.is_empty());
-    assert!(config.panel.system_status_label.is_empty());
-    assert_eq!(config.panel.empty_offset_top, 120);
-    assert_eq!(
-        config.panel.section_order,
-        vec![PanelSection::Widgets, PanelSection::Notifications]
+fn current_schema_reports_unknown_keys_without_rejecting_valid_fields() {
+    let input = format!(
+        "config_version = {CURRENT_CONFIG_VERSION}\n[panel]\nwidth = 500\nunknown_panel_key = true\n"
     );
+    let (config, ignored) = deserialize_config(&input).expect("parse current config");
+
+    assert_eq!(config.panel.width, 500);
+    assert_eq!(ignored, ["panel.unknown_panel_key"]);
 }
 
 #[test]
-fn legacy_config_without_media_table_receives_media_compatibility() {
-    let (config, _) =
-        deserialize_config("[panel]\nwidth = 480\n").expect("migrate legacy config without media");
+fn non_table_configuration_root_is_rejected() {
+    let error = deserialize_config("[1, 2, 3]").expect_err("reject non-table TOML root");
 
-    assert_eq!(config.media.art_size_px, 50);
-    assert_eq!(config.media.text_width_floor_px, 140);
-    assert_eq!(config.media.content_spacing_px, 10);
-    assert_eq!(config.media.control_spacing_px, 6);
-    assert_eq!(config.media.navigation_spacing_px, 6);
-}
-
-#[test]
-fn legacy_config_without_widgets_table_receives_widget_compatibility() {
-    let (config, _) = deserialize_config("[panel]\nwidth = 480\n")
-        .expect("migrate legacy config without widgets");
-
-    assert_eq!(config.widgets.density, WidgetDensity::Comfortable);
-    assert_eq!(config.widgets.toggle_columns, 4);
-    assert_eq!(config.widgets.stat_columns, 2);
-    assert_eq!(config.widgets.card_columns, 2);
-    assert_eq!(config.widgets.volume.segments, 0);
-    assert_eq!(config.widgets.brightness.segments, 0);
-    assert!(config.widgets.cards.iter().all(|card| card.enabled));
-}
-
-#[test]
-fn malformed_legacy_table_is_reported_instead_of_replaced() {
-    let error = deserialize_config("panel = 'not a table'\n")
-        .expect_err("invalid legacy table should remain a type error");
-
-    assert!(error.contains("invalid type"));
+    assert!(!error.is_empty());
 }

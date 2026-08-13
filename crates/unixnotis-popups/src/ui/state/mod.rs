@@ -4,8 +4,8 @@ mod constructor;
 mod events;
 mod model;
 
-pub(super) use model::IconCacheEntry;
 pub use model::UiState;
+pub(super) use model::{IconCacheEntry, IconResolutionKey};
 
 #[cfg(test)]
 mod tests;

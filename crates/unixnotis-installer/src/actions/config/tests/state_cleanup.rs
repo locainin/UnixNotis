@@ -3,13 +3,13 @@ use super::super::state::{
     DirCleanupOutcome, DND_STATE_FILE,
 };
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 use crate::actions::ActionContext;
 use crate::app::events::UiMessage;
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -125,6 +125,29 @@ fn remove_state_file_propagates_non_missing_filesystem_errors() {
 }
 
 #[test]
+fn remove_state_file_rejects_symlink_without_touching_its_target() {
+    let root = crate::test_support::fs::unique_temp_path("remove-state-symlink");
+    let state_root = root.join("unixnotis");
+    let state_file = state_root.join(DND_STATE_FILE);
+    let protected = root.join("protected");
+    fs::create_dir_all(&state_root).expect("create state directory");
+    fs::write(&protected, "protected").expect("write protected file");
+    symlink(&protected, &state_file).expect("create state link");
+
+    remove_state_file(&state_root).expect_err("state link should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(&protected).expect("read protected file"),
+        "protected"
+    );
+    assert!(fs::symlink_metadata(&state_file)
+        .expect("state link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn remove_state_uses_xdg_state_home_and_deletes_persisted_state() {
     let _lock = crate::test_support::env::test_env_lock();
     let state_home = std::env::temp_dir().join(format!(
@@ -142,13 +165,8 @@ fn remove_state_uses_xdg_state_home_and_deletes_persisted_state() {
         bin_dir: state_home.join("bin"),
         service: ServiceManager::systemd_user(state_home.join("service")),
     };
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let (log_tx, log_rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx,

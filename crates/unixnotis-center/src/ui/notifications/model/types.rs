@@ -6,8 +6,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use gtk::glib;
-use unixnotis_core::EmptyStateAlignment;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{
+    CutCorners, EmptyStateAlignment, NotificationMetadataConfig, NotificationView,
+};
 
 use super::item::RowItem;
 
@@ -18,6 +19,7 @@ pub struct NotificationList {
     pub(in crate::ui::notifications) empty_offset_top: i32,
     pub(in crate::ui::notifications) empty_alignment: EmptyStateAlignment,
     pub(in crate::ui) empty_text: String,
+    pub(in crate::ui) no_matching_text: String,
     pub(in crate::ui::notifications) entries: HashMap<u32, NotificationEntry>,
     // Active notifications render first to match the in-flight stack
     pub(in crate::ui::notifications) active_order: VecDeque<u32>,
@@ -47,7 +49,11 @@ pub struct NotificationList {
     pub(in crate::ui::notifications) transient_to_history: bool,
     // Optional metadata lanes stay config-owned so the stock row remains compact
     pub(in crate::ui::notifications) show_notification_metadata: bool,
+    pub(in crate::ui::notifications) notification_metadata: Rc<NotificationMetadataConfig>,
+    pub(in crate::ui::notifications) notification_corners: CutCorners,
     pub(in crate::ui::notifications) show_notification_thumbnails: bool,
+    pub(in crate::ui::notifications) show_notification_avatars: bool,
+    pub(in crate::ui::notifications) reduced_motion: bool,
     pub(in crate::ui::notifications) max_active: usize,
     pub(in crate::ui::notifications) max_entries: usize,
 }
@@ -58,10 +64,23 @@ pub struct NotificationListConfig {
     pub max_entries: usize,
     pub transient_to_history: bool,
     pub show_notification_metadata: bool,
+    pub notification_metadata: NotificationMetadataConfig,
+    pub notification_corners: CutCorners,
     pub show_notification_thumbnails: bool,
+    pub show_notification_avatars: bool,
+    pub reduced_motion: bool,
     pub empty_text: String,
+    pub no_matching_text: String,
     pub empty_offset_top: i32,
     pub empty_alignment: EmptyStateAlignment,
+}
+
+/// Counts used by the panel header for normal and filtered list states
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) struct NotificationCounts {
+    pub(in crate::ui) matching: usize,
+    pub(in crate::ui) total: usize,
+    pub(in crate::ui) filter_active: bool,
 }
 
 pub(in crate::ui::notifications) struct NotificationEntry {

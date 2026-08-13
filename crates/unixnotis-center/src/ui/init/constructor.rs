@@ -22,7 +22,12 @@ impl UiState {
         }
 
         // Build the panel widget tree first so child widgets can be attached safely
-        let panel = panel::build_panel_widgets(&init.app, &init.config);
+        let panel = panel::build::build_panel_widgets(&init.app, &init.config);
+        let scroll_user_generation = Rc::new(Cell::new(0));
+        super::super::events::connect_user_scroll_tracking(
+            &panel.sections.scroller,
+            scroll_user_generation.clone(),
+        );
         let icon_resolver = Rc::new(icons::IconResolver::new());
         debug::set_level(PanelDebugLevel::Off);
         let list = build_notification_list(&panel, &init, icon_resolver.clone());
@@ -35,15 +40,46 @@ impl UiState {
         let extra_widgets = build_widget_sections(&panel, &init, &widget_icon_resolver);
         list.set_empty_layout(has_visible_widget_section(&panel));
 
-        panel::connect_dnd_toggle(&panel, dnd_guard.clone(), init.command_tx.clone());
-        panel::connect_clear_button(&panel.clear_action_button, init.command_tx.clone());
-        panel::connect_clear_button(&panel.clear_header_button, init.command_tx.clone());
-        panel::connect_close_button(&panel, init.command_tx.clone());
-        panel::connect_widget_collapse_toggle(&panel, init.event_tx.clone());
-        panel::connect_filter_entry(&panel, init.event_tx.clone());
-        panel::connect_search_toggle(&panel, search_toggle_guard.clone());
-        panel::connect_auto_close(&panel, &init, panel_visible_flag.clone());
-        panel::connect_keyboard_shortcuts(&panel, init.command_tx.clone());
+        panel::header::actions::connect_dnd_toggle(
+            &panel,
+            dnd_guard.clone(),
+            init.command_tx.clone(),
+        );
+        let dnd_duration_menu = panel::header::dnd::connect_dnd_menu(
+            &panel.header.actions.dnd_toggle,
+            &init.config.panel,
+            init.command_tx.clone(),
+        );
+        panel::header::actions::connect_clear_button(
+            &panel.header.actions.clear_button,
+            init.command_tx.clone(),
+        );
+        panel::header::actions::connect_clear_button(
+            &panel.sections.clear_header_button,
+            init.command_tx.clone(),
+        );
+        panel::header::actions::connect_close_button(&panel, init.command_tx.clone());
+        panel::header::search::connect_widget_collapse_toggle(
+            &panel.header.actions.focus_toggle,
+            &panel.sections.widget_revealer,
+            init.event_tx.clone(),
+        );
+        panel::header::search::connect_filter_entry(
+            &panel.header.search.entry,
+            init.event_tx.clone(),
+        );
+        panel::header::search::connect_search_toggle(
+            &panel.header.actions.search_toggle,
+            &panel.header.search.revealer,
+            &panel.header.search.entry,
+            search_toggle_guard.clone(),
+        );
+        panel::behavior::autoclose::connect_auto_close(&panel, &init, panel_visible_flag.clone());
+        panel::behavior::keyboard::connect_keyboard_shortcuts(
+            &panel,
+            init.command_tx.clone(),
+            scroll_user_generation.clone(),
+        );
 
         if init.config.panel.respect_work_area {
             // Work area is refreshed early to ensure the panel anchors correctly
@@ -58,13 +94,18 @@ impl UiState {
             config: init.config,
             config_path: init.config_path,
             css: init.css,
+            dnd_duration_menu,
             panel,
             list,
             icon_resolver,
             widget_icon_resolver,
             dnd_guard,
+            dnd_expiration_source: None,
             search_toggle_guard,
             panel_visible: false,
+            notifications_changed_while_hidden: false,
+            notification_rebuild_generation: Rc::new(Cell::new(0)),
+            scroll_user_generation,
             panel_visible_flag,
             work_area: None,
             last_count: None,

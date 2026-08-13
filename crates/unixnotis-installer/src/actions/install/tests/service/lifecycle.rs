@@ -8,8 +8,9 @@ use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::service_manager::ServiceManager;
 
+use super::super::super::service::flow::install_service;
 use super::super::super::service::lifecycle::{service_start_mode_from_enabled, ServiceStartMode};
-use super::super::super::service::{install_service, uninstall_service, write_service_artifact};
+use super::super::super::service::{uninstall_service, write_service_artifact};
 use super::super::support::{test_context, test_paths, test_root};
 use super::expected_primary_artifact_contents;
 use super::flow_support::{flow_env, lock_env, write_fake_tools, FakeToolMode};
@@ -21,15 +22,16 @@ use super::flow_support::{flow_env, lock_env, write_fake_tools, FakeToolMode};
 fn install_service_skips_rewrite_when_unit_is_already_current() {
     let root = test_root("install-service-unchanged");
     let paths = test_paths(&root);
-    fs::create_dir_all(paths.service.artifact_root()).expect("make service artifact dir");
-    // Seed exactly what the backend would render so the installer should stay quiet
-    let expected = expected_primary_artifact_contents(&paths);
-    fs::write(paths.service.primary_artifact_path(), &expected).expect("write current artifact");
-
     let detection = Detection {
         owner: None,
         daemons: Vec::new(),
     };
+    let setup_ctx = test_context(&detection, &paths, ActionMode::Install);
+    // Seed every artifact because the systemd service and D-Bus activation file form one install
+    for artifact in paths.service.artifacts(&paths.bin_dir) {
+        write_service_artifact(&setup_ctx, &artifact).expect("write current service artifact");
+    }
+    let expected = expected_primary_artifact_contents(&paths);
     let mut ctx = test_context(&detection, &paths, ActionMode::Install);
     // Start as true so the test proves install_service actively clears stale reload state
     let reload_required = Arc::new(AtomicBool::new(true));

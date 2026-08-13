@@ -2,7 +2,6 @@ use super::super::block::{
     strip_hyprland_bootstrap_block, HYPR_BOOTSTRAP_END, HYPR_BOOTSTRAP_START,
 };
 use crate::app::events::UiMessage;
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use std::path::Path;
@@ -13,14 +12,9 @@ use std::sync::{mpsc, Arc};
 fn strip_hyprland_bootstrap_block_handles_malformed_block() {
     let _lock = crate::test_support::env::test_env_lock();
     // Confirms malformed markers leave the original content intact for safe append
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -39,14 +33,9 @@ fn strip_hyprland_bootstrap_block_handles_malformed_block() {
 fn strip_hyprland_bootstrap_block_removes_managed_block() {
     let _lock = crate::test_support::env::test_env_lock();
     // Ensures a well-formed block is removed and the remaining content is preserved
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -65,14 +54,9 @@ fn strip_hyprland_bootstrap_block_removes_managed_block() {
 #[test]
 fn strip_hyprland_bootstrap_block_removes_all_blocks() {
     let _lock = crate::test_support::env::test_env_lock();
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -92,14 +76,9 @@ fn strip_hyprland_bootstrap_block_removes_all_blocks() {
 #[test]
 fn strip_hyprland_bootstrap_block_removes_comment_prefixes_without_residue() {
     let _lock = crate::test_support::env::test_env_lock();
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -121,14 +100,9 @@ fn strip_hyprland_bootstrap_block_removes_comment_prefixes_without_residue() {
 #[test]
 fn strip_hyprland_bootstrap_block_matches_exact_hyprlang_marker_comments() {
     let _lock = crate::test_support::env::test_env_lock();
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,
@@ -150,14 +124,9 @@ fn strip_hyprland_bootstrap_block_matches_exact_hyprlang_marker_comments() {
 #[test]
 fn strip_hyprland_bootstrap_block_ignores_marker_text_inside_lua_strings() {
     let _lock = crate::test_support::env::test_env_lock();
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
     let (tx, _rx) = mpsc::sync_channel::<UiMessage>(8);
     let mut ctx = crate::actions::ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,

@@ -6,13 +6,17 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+libc.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
 toml.workspace = true
 serde_json.workspace = true
 semver.workspace = true
 serde.workspace = true
-chrono.workspace = true
 rustix.workspace = true
+sha2.workspace = true
+tokio.workspace = true
 unixnotis-core = { path = "../unixnotis-core" }
 unicode-width.workspace = true
+wait-timeout.workspace = true
+zbus.workspace = true

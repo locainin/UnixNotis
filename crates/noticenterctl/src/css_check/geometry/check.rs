@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
+use unixnotis_core::{build_modern_theme_custom_properties, Config};
 
 use super::super::files::format_display_path;
 use super::super::report::{CssCheckCategory, CssCheckDiagnostic};
@@ -31,8 +31,7 @@ pub(in crate::css_check) fn lint_geometry_css_files_with_config(
     }
 
     // Runtime theme overrides inject modern tokens that may never appear in the css files
-    let generated_tokens =
-        build_modern_theme_custom_properties(&config.theme, gtk_css_features_for_version(4, 16));
+    let generated_tokens = build_modern_theme_custom_properties(&config.theme);
 
     // Runtime tokens are stitched in before the file scan so token-only themes do not hide
     // width pressure from the checker

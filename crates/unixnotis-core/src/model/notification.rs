@@ -6,22 +6,44 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedValue, Type};
 
+use super::attribution::NotificationAttribution;
+use super::diagnostics::AttributionDiagnostics;
 use super::image::NotificationImage;
+use super::interaction::InlineReplyPolicy;
+use super::reply::InlineReply;
 use super::types::{Action, Urgency};
+use crate::util::{fold_text_for_layout, MAX_DISPLAY_TOKEN_WIDTH};
+use crate::PopupDecisionRecord;
+
+/// Exact identity of one committed notification payload
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq, Hash)]
+pub struct NotificationKey {
+    pub id: u32,
+    pub generation: u64,
+}
 
 /// Full notification record stored by the daemon
 #[derive(Debug)]
 pub struct Notification {
     // Stable identifier assigned by the daemon
     pub id: u32,
+    // Process-wide commit generation distinguishes same-ID replacements
+    pub generation: u64,
     // Origin metadata for display and filtering
     pub app_name: String,
     pub app_icon: String,
+    // Daemon-resolved application association stays stable for the notification lifetime
+    pub attribution: NotificationAttribution,
+    // Structured evidence is retained for authenticated explanation requests
+    pub attribution_diagnostics: AttributionDiagnostics,
     // User-facing content as provided by the sender
     pub summary: String,
     pub body: String,
     // Optional actions supplied by the app
     pub actions: Vec<Action>,
+    // Reply metadata exists only for an explicit KDE-compatible action
+    pub inline_reply: InlineReply,
+    pub inline_reply_policy: InlineReplyPolicy,
     // Raw hints preserved for storage and downstream consumers
     pub hints: HashMap<String, OwnedValue>,
     // Derived urgency used for styling and escalation
@@ -46,20 +68,48 @@ pub struct Notification {
 }
 
 impl Notification {
+    /// Return the exact key for this committed payload
+    #[must_use]
+    pub const fn key(&self) -> NotificationKey {
+        NotificationKey {
+            id: self.id,
+            generation: self.generation,
+        }
+    }
+
+    /// Update canonical urgency and any retained protocol projection together
+    pub fn set_urgency(&mut self, urgency: Urgency) {
+        self.urgency = urgency;
+        // Retained hints are projections of the model and never independent policy inputs
+        if self.hints.contains_key("urgency") {
+            self.hints
+                .insert("urgency".to_string(), OwnedValue::from(urgency.as_u32()));
+        }
+    }
+
     /// Convert to a lightweight view for UI consumption
     #[must_use]
     pub fn to_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
-            app_name: self.app_name.clone(),
-            summary: notification_plain_text(&self.summary),
-            body: notification_plain_text(&self.body),
+            generation: self.generation,
+            app_name: self.attribution.display_name.clone(),
+            attribution: self.attribution.clone(),
+            summary: notification_display_text(&self.summary),
+            body: notification_display_text(&self.body),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
+            category: self.category.clone().unwrap_or_default(),
             // Center and popup policy both need the transient bit to stay in sync
             is_transient: self.is_transient,
+            // Relative popup time needs the original commit time after reconnect and seed
+            received_at_unix_seconds: self.received_at.timestamp(),
             // UIs only need the text, actions, and image payload used for rendering
             image: self.image.clone(),
+            popup_decision: PopupDecisionRecord::default(),
+            popup_hide_after_ms: 0,
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -69,15 +119,24 @@ impl Notification {
     pub fn to_list_view(&self) -> NotificationView {
         NotificationView {
             id: self.id,
-            app_name: self.app_name.clone(),
-            summary: notification_plain_text(&self.summary),
-            body: notification_plain_text(&self.body),
+            generation: self.generation,
+            app_name: self.attribution.display_name.clone(),
+            attribution: self.attribution.clone(),
+            summary: notification_display_text(&self.summary),
+            body: notification_display_text(&self.body),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             urgency: self.urgency.as_u8(),
+            category: self.category.clone().unwrap_or_default(),
             // History policy still depends on the transient bit in panel rows
             is_transient: self.is_transient,
+            // List and popup views use the same stable wall-clock timestamp
+            received_at_unix_seconds: self.received_at.timestamp(),
             // List rows should avoid carrying raw image buffers across D-Bus
             image: self.image.for_listing(),
+            popup_decision: PopupDecisionRecord::default(),
+            popup_hide_after_ms: 0,
             // Protocol flags and sender metadata stay daemon-side to keep D-Bus payloads small
         }
     }
@@ -85,17 +144,24 @@ impl Notification {
     /// Create a history entry with heavyweight hint data stripped out
     #[must_use]
     pub fn to_history(&self) -> Self {
-        // History entries should never retain raw image-data blobs
+        // History entries keep only bounded daemon-owned image roles
         let mut image = self.image.clone();
-        image.has_image_data = false;
-        image.image_data = Default::default();
+        image.content_image = Default::default();
+        image.sender_visual = Default::default();
+        // A cleared raster must never retain a role that can select an image slot
+        image.sender_visual_role = crate::NotificationVisualRole::None;
         Self {
             id: self.id,
+            generation: self.generation,
             app_name: self.app_name.clone(),
             app_icon: self.app_icon.clone(),
+            attribution: self.attribution.clone(),
+            attribution_diagnostics: self.attribution_diagnostics.clone(),
             summary: self.summary.clone(),
             body: self.body.clone(),
             actions: self.actions.clone(),
+            inline_reply: self.inline_reply.clone(),
+            inline_reply_policy: self.inline_reply_policy,
             // Keep history entries lightweight by dropping raw hint payloads
             hints: HashMap::new(),
             urgency: self.urgency,
@@ -152,15 +218,24 @@ fn notification_plain_text(input: &str) -> String {
     collapse_notification_whitespace(&output)
 }
 
+fn notification_display_text(input: &str) -> String {
+    // Markup removal can join text that was separated by tags in the stored payload
+    fold_text_for_layout(&notification_plain_text(input), MAX_DISPLAY_TOKEN_WIDTH)
+}
+
 fn push_tag_spacing(output: &mut String, tag: &str) {
+    const BLOCK_TAGS: [&str; 5] = ["br", "p", "div", "li", "tr"];
+
     // Trim "/" first so opening and closing tags use the same spacing rule
     let tag_name = tag
         .trim_start_matches('/')
         .split(|ch: char| ch.is_whitespace() || ch == '/')
         .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if matches!(tag_name.as_str(), "br" | "p" | "div" | "li" | "tr") {
+        .unwrap_or_default();
+    if BLOCK_TAGS
+        .iter()
+        .any(|expected| tag_name.eq_ignore_ascii_case(expected))
+    {
         // These tags normally separate chunks of text
         output.push('\n');
     }
@@ -244,7 +319,17 @@ fn collapse_notification_whitespace(input: &str) -> String {
         }
     }
 
-    output.trim().to_string()
+    if saw_newline {
+        // A newline can follow an already-normalized space at the tail
+        output.pop();
+        if output.ends_with(' ') {
+            output.pop();
+        }
+    } else if saw_space {
+        output.pop();
+    }
+
+    output
 }
 
 /// Serializable view of a notification for D-Bus signals
@@ -252,17 +337,42 @@ fn collapse_notification_whitespace(input: &str) -> String {
 pub struct NotificationView {
     // Identifier matches Notification::id
     pub id: u32,
+    // Generation identifies the exact same-ID payload represented by this view
+    pub generation: u64,
     // Lightweight fields used for UI display and filtering
-    // Intentionally omits daemon-only protocol flags and timestamps
+    // Intentionally omits daemon-only protocol flags and full timestamp objects
     pub app_name: String,
+    // Authenticated badge identity and any mismatched caller-supplied brand claim
+    pub attribution: NotificationAttribution,
     pub summary: String,
     pub body: String,
     pub actions: Vec<Action>,
+    pub inline_reply: InlineReply,
+    pub inline_reply_policy: InlineReplyPolicy,
     pub urgency: u8,
+    // Category lets compact clients distinguish real media from decorative icon payloads
+    pub category: String,
     // Close handling needs this flag so history policy stays shared
     pub is_transient: bool,
+    // Unix seconds preserve the original receipt time across UI reconnects
+    pub received_at_unix_seconds: i64,
     // Image metadata intended for UI usage
     pub image: NotificationImage,
+    // Arrival-time popup reasoning stays stable while DND and renderer state change later
+    pub popup_decision: PopupDecisionRecord,
+    // Sanitized banner duration resolved by the daemon for this generation
+    pub popup_hide_after_ms: u64,
+}
+
+impl NotificationView {
+    /// Return the exact committed identity represented by this UI snapshot
+    #[must_use]
+    pub const fn key(&self) -> NotificationKey {
+        NotificationKey {
+            id: self.id,
+            generation: self.generation,
+        }
+    }
 }
 
 #[cfg(test)]

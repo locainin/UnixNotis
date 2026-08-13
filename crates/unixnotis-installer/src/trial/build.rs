@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
+use crate::toolchain::{cargo_command, resolve_cargo};
+
 // Trial mode needs every runtime binary that may be spawned by the daemon
 const TRIAL_PACKAGES: [&str; 4] = [
     "unixnotis-daemon",
@@ -22,7 +24,8 @@ pub(super) struct TrialBinaries {
 
 pub(super) fn build_trial_binaries(repo_root: &Path) -> Result<TrialBinaries> {
     // Build every runtime binary before launch so stale debug outputs are not reused
-    let mut command = std::process::Command::new("cargo");
+    let cargo = resolve_cargo()?;
+    let mut command = cargo_command(&cargo)?;
     command.arg("build");
     for package in TRIAL_PACKAGES {
         // Package arguments stay explicit so adding a runtime binary is visible here

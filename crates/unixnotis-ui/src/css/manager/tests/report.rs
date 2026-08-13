@@ -7,6 +7,12 @@ fn read_failures_excludes_custom_and_intentional_empty_fallbacks() {
     let report = CssReloadReport {
         layers: vec![
             CssLayerReload {
+                layer: CssProviderLayer::Popup,
+                path: PathBuf::from("popup.css"),
+                source: CssLayerSource::Custom,
+                error: None,
+            },
+            CssLayerReload {
                 layer: CssProviderLayer::Base,
                 path: PathBuf::from("base.css"),
                 source: CssLayerSource::Custom,

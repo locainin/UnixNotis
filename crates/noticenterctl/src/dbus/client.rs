@@ -1,8 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use anyhow::Result;
-use unixnotis_core::{ControlProxy, InhibitorInfo, NotificationView, PanelDebugLevel};
+use anyhow::{anyhow, Result};
+use unixnotis_core::{
+    ControlProxy, InhibitorInfo, NotificationDiagnosticsView, NotificationView, PanelDebugLevel,
+};
 
 use super::timeout::run_control_call;
 
@@ -23,6 +25,9 @@ pub trait ControlClient {
     // Ask the panel to close
     fn close_panel(&self) -> ControlFuture<'_, ()>;
 
+    // Rebuild desktop application records without restarting the daemon
+    fn refresh_applications(&self) -> ControlFuture<'_, ()>;
+
     // Remove every notification from both active and history areas
     fn clear_all(&self) -> ControlFuture<'_, ()>;
 
@@ -35,6 +40,12 @@ pub trait ControlClient {
     // Remove one notification by its id
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()>;
 
+    // Fetch structured attribution and popup state for one active notification
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>>;
+
     // Fetch the notifications that are active right now
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>>;
 
@@ -43,6 +54,9 @@ pub trait ControlClient {
 
     // Turn do-not-disturb on or off directly
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()>;
+
+    // Enable do-not-disturb until one absolute deadline
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()>;
 
     // Flip do-not-disturb to the opposite of what it is now
     fn toggle_dnd(&self) -> ControlFuture<'_, ()>;
@@ -81,6 +95,10 @@ impl ControlClient for ControlProxy<'_> {
         Box::pin(run_control_call(ControlProxy::close_panel(self)))
     }
 
+    fn refresh_applications(&self) -> ControlFuture<'_, ()> {
+        Box::pin(run_control_call(ControlProxy::refresh_applications(self)))
+    }
+
     fn clear_all(&self) -> ControlFuture<'_, ()> {
         // Ask the daemon to clear everything it is holding
         Box::pin(run_control_call(ControlProxy::clear_all(self)))
@@ -97,8 +115,29 @@ impl ControlClient for ControlProxy<'_> {
     }
 
     fn dismiss(&self, id: u32) -> ControlFuture<'_, ()> {
-        // Send the id so the daemon knows exactly which notification to remove
-        Box::pin(run_control_call(ControlProxy::dismiss(self, id)))
+        Box::pin(async move {
+            // Resolve one exact active generation before issuing the mutating call
+            let mut candidates =
+                run_control_call(ControlProxy::get_active_notification(self, id)).await?;
+            let notification = candidates
+                .pop()
+                .ok_or_else(|| anyhow!("notification {id} is not active"))?;
+            run_control_call(ControlProxy::dismiss_generation(
+                self,
+                notification.id,
+                notification.generation,
+            ))
+            .await
+        })
+    }
+
+    fn notification_diagnostics(
+        &self,
+        id: u32,
+    ) -> ControlFuture<'_, Vec<NotificationDiagnosticsView>> {
+        Box::pin(run_control_call(
+            ControlProxy::get_notification_diagnostics(self, id),
+        ))
     }
 
     fn list_active(&self) -> ControlFuture<'_, Vec<NotificationView>> {
@@ -114,6 +153,13 @@ impl ControlClient for ControlProxy<'_> {
     fn set_dnd(&self, enabled: bool) -> ControlFuture<'_, ()> {
         // Send the exact do-not-disturb value the caller wants
         Box::pin(run_control_call(ControlProxy::set_dnd(self, enabled)))
+    }
+
+    fn set_dnd_until(&self, expires_at: i64) -> ControlFuture<'_, ()> {
+        // Absolute timestamps keep CLI and panel deadlines consistent across daemon restarts
+        Box::pin(run_control_call(ControlProxy::set_dnd_until(
+            self, expires_at,
+        )))
     }
 
     fn toggle_dnd(&self) -> ControlFuture<'_, ()> {

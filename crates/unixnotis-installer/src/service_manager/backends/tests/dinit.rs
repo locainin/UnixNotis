@@ -53,42 +53,70 @@ fn dinit_backend_renders_boot_dependency_artifacts() {
 fn dinit_backend_commands_match_expected_behavior() {
     let manager = ServiceManager::dinit_user(PathBuf::from("/tmp/dinit.d"));
 
-    let availability = manager
-        .availability_command()
-        .expect("dinit has an availability command");
-    assert_eq!(availability.program(), "dinitctl");
-    assert_eq!(availability.args(), &["--user", "--quiet", "list"]);
-
     // Enablement is artifact-backed, so no manager command should be required for install state
     assert!(manager.is_enabled_command().is_none());
 
-    let active = manager
-        .active_probe()
-        .expect("dinit has an active-state command");
+    let active = manager.active_probe();
     assert_eq!(
         active.command().args(),
-        &[
-            "--user",
-            "--quiet",
-            "is-started",
-            UNIXNOTIS_DAEMON_DINIT_SERVICE
-        ]
+        &["--user", "status", UNIXNOTIS_DAEMON_DINIT_SERVICE]
+    );
+    assert_eq!(
+        active.parser_state(true, "Service: unixnotis-daemon\n    State: STARTED\n"),
+        crate::service_manager::contract::ServiceProbeState::Active
+    );
+    for transition in ["STARTING", "STOPPING"] {
+        assert_eq!(
+            active.parser_state(
+                true,
+                &format!("Service: unixnotis-daemon\n    State: {transition}\n")
+            ),
+            crate::service_manager::contract::ServiceProbeState::Active
+        );
+    }
+    assert_eq!(
+        active.parser_state(
+            true,
+            "Service: unixnotis-daemon\n    State: STOPPED (terminated)\n"
+        ),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state(true, "Service: unixnotis-daemon\n    State: STOPPED\n"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state(true, "Service: unixnotis-daemon\n    State: UNKNOWN\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
+    );
+    for malformed_state in ["STOPPED_BUT_UNKNOWN", "STOPPED (unterminated", "UNKNOWN)"] {
+        assert_eq!(
+            active.parser_state(
+                true,
+                &format!("Service: unixnotis-daemon\n    State: {malformed_state}\n")
+            ),
+            crate::service_manager::contract::ServiceProbeState::Indeterminate
+        );
+    }
+    assert_eq!(
+        active.parser_state_with_result(Some(1), "", "dinitctl: service not loaded.\n"),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    assert_eq!(
+        active.parser_state_with_result(Some(1), "", "dinit-client: connecting to socket failed\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
     );
 
     // First install should not reload a service that dinit has not loaded yet
     assert!(manager.refresh_after_artifact_change().is_none());
 
-    let enable = manager
-        .enable_now_command()
-        .expect("dinit starts after artifacts handle persistence");
+    let enable = manager.enable_now_command();
     assert_eq!(
         enable.args(),
         &["--user", "start", UNIXNOTIS_DAEMON_DINIT_SERVICE]
     );
 
-    let disable = manager
-        .disable_now_command()
-        .expect("dinit can stop during uninstall");
+    let disable = manager.disable_now_command();
     assert_eq!(
         disable.args(),
         &[
@@ -206,14 +234,21 @@ fn dinit_backend_environment_sync_uses_setenv() {
         ]
     );
     assert_eq!(
-        commands[0].envs(),
-        &[
-            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
-            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
+        commands[0]
+            .envs()
+            .iter()
+            .map(|(name, value)| (
+                name.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
             (
                 "DBUS_SESSION_BUS_ADDRESS".to_string(),
                 "unix:path=/tmp/unixnotis-bus".to_string(),
             ),
+            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
+            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
         ]
     );
 }

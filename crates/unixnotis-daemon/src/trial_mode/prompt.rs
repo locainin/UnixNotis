@@ -12,7 +12,15 @@ pub(super) fn confirm_trial() -> Result<bool> {
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_ascii_lowercase();
     // Any response outside y/yes is treated as no
-    Ok(matches!(input.as_str(), "y" | "yes"))
+    Ok(is_trial_confirmation(&input))
 }
+
+fn is_trial_confirmation(input: &str) -> bool {
+    let input = input.trim();
+    input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes")
+}
+
+#[cfg(test)]
+#[path = "tests/prompt.rs"]
+mod tests;

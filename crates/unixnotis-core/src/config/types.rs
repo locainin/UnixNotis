@@ -12,7 +12,7 @@ use super::rules::RuleConfig;
 use super::theme::ThemeConfig;
 use super::widgets::WidgetsConfig;
 
-pub const CURRENT_CONFIG_VERSION: u32 = 2;
+pub const CURRENT_CONFIG_VERSION: u32 = 5;
 
 /// Top-level configuration loaded from config.toml
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -87,7 +87,7 @@ pub enum InhibitMode {
 pub struct HistoryConfig {
     // Saved items
     pub max_entries: usize,
-    // Live items
+    // Live items retained per stable sender process
     pub max_active: usize,
     // Save transient items too
     pub transient_to_history: bool,
@@ -97,7 +97,7 @@ impl Default for HistoryConfig {
     fn default() -> Self {
         Self {
             max_entries: 200,
-            // Match the daemon cap
+            // Match the daemon's per-principal cap
             max_active: 12,
             transient_to_history: false,
         }
@@ -110,6 +110,10 @@ impl Default for HistoryConfig {
 pub struct SoundConfig {
     /// Enables sound playback when the daemon receives notifications
     pub enabled: bool,
+    /// Allows notification senders to request local audio files
+    pub allow_file_hints: bool,
+    /// Directories that may contain notification-requested audio files
+    pub allowed_file_hint_dirs: Vec<String>,
     /// Default named sound from the freedesktop sound theme
     pub default_name: Option<String>,
     /// Default sound file path, resolves relative to the `UnixNotis` config dir
@@ -122,6 +126,8 @@ impl Default for SoundConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            allow_file_hints: false,
+            allowed_file_hint_dirs: Vec::new(),
             default_name: Some("message-new-instant".to_string()),
             default_file: None,
             default_dir: None,

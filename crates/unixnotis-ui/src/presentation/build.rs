@@ -1,0 +1,370 @@
+//! Derivation of one shared notification presentation snapshot
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use unixnotis_core::{
+    Action, ApplicationActionPolicy, AttributionStatus, IdentityAssurance, InlineReplyPolicy,
+    NotificationView, PopupAdmissionView, Urgency,
+};
+
+use super::text::{
+    clamp_label_text, has_visible_text, ACTION_LABEL_MAX_CHARS, APP_LABEL_MAX_CHARS,
+    BODY_LABEL_MAX_CHARS, SUMMARY_LABEL_MAX_CHARS,
+};
+use super::types::{
+    ActionPresentation, ActionView, BadgePresentation, IdentityPresentation, MediaPresentation,
+    NotificationKind, ReplyPresentation, SenderVisualPresentation, ThumbnailKind, TrustLevel,
+    TrustPresentation, VisualPresentation,
+};
+
+/// Complete non-GTK notification presentation shared by popup and panel adapters
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotificationPresentation {
+    pub kind: NotificationKind,
+    pub trust: TrustPresentation,
+    pub identity: IdentityPresentation,
+    pub title: String,
+    pub body: Option<String>,
+    pub timestamp: String,
+    pub popup_status: Option<String>,
+    pub media: MediaPresentation,
+    /// Sender and content visual roles shared by every GTK adapter
+    pub visuals: VisualPresentation,
+    pub actions: ActionPresentation,
+    pub critical: bool,
+}
+
+impl NotificationPresentation {
+    #[must_use]
+    pub fn from_view(notification: &NotificationView) -> Self {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| {
+                i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
+            });
+        Self::from_view_at(notification, now)
+    }
+
+    #[must_use]
+    pub fn from_view_at(notification: &NotificationView, now: i64) -> Self {
+        let trust = trust_presentation(notification);
+        let kind = notification_kind(notification);
+        let identity = identity_presentation(notification, trust.level);
+
+        Self {
+            kind,
+            trust,
+            identity,
+            title: clamp_label_text(&notification.summary, SUMMARY_LABEL_MAX_CHARS).into_owned(),
+            body: has_visible_text(&notification.body)
+                .then(|| clamp_label_text(&notification.body, BODY_LABEL_MAX_CHARS).into_owned()),
+            timestamp: relative_time_label(notification.received_at_unix_seconds, now),
+            popup_status: popup_status(notification),
+            media: MediaPresentation {
+                thumbnail: thumbnail_kind(notification),
+            },
+            visuals: visual_presentation(notification),
+            actions: visible_actions(notification, kind),
+            critical: notification.urgency == Urgency::Critical as u8,
+        }
+    }
+}
+
+fn popup_status(notification: &NotificationView) -> Option<String> {
+    let decision = &notification.popup_decision;
+    if decision.decided_at_unix_ms <= 0 {
+        return None;
+    }
+    match decision.admission_at_commit {
+        PopupAdmissionView::Rule => {
+            return Some("Not shown — matched a notification rule".to_string());
+        }
+        PopupAdmissionView::Dnd => {
+            return Some("Not shown — Do Not Disturb was enabled".to_string());
+        }
+        PopupAdmissionView::Inhibitor => {
+            return Some("Not shown — notifications were inhibited".to_string());
+        }
+        PopupAdmissionView::RendererDisabled => {
+            return Some("Not shown — popups are disabled".to_string());
+        }
+        PopupAdmissionView::RendererUnavailable => {
+            if decision.delivery_stage != unixnotis_core::PopupDeliveryStage::Visible {
+                return Some("Not shown — popup renderer was unavailable".to_string());
+            }
+        }
+        PopupAdmissionView::Show => {}
+    }
+
+    matches!(
+        decision.delivery_stage,
+        unixnotis_core::PopupDeliveryStage::FanoutFailed
+    )
+    .then(|| "Not shown — live notification delivery failed".to_string())
+}
+
+pub(super) fn trust_presentation(notification: &NotificationView) -> TrustPresentation {
+    let level = trust_level(notification);
+    let short_label = match level {
+        // Verified and relay primary labels already communicate their source clearly
+        TrustLevel::Verified | TrustLevel::Relay => None,
+        TrustLevel::SystemAssociated => Some("System associated".to_string()),
+        TrustLevel::PortalAssociated => Some("Portal mediated".to_string()),
+        TrustLevel::UserAssociated => Some("Local app".to_string()),
+        TrustLevel::Unresolved => Some("Unverified".to_string()),
+        TrustLevel::Conflict => Some("Suspicious".to_string()),
+    };
+    let details_label = nonempty_text(&notification.attribution.diagnostic_detail);
+    let has_reply_action = notification
+        .actions
+        .iter()
+        .any(|action| action.key == "inline-reply");
+    let has_reply_request = notification.inline_reply.available || has_reply_action;
+    let reply = if has_reply_action
+        && notification.inline_reply.available
+        && notification.inline_reply_policy == InlineReplyPolicy::Allow
+        && level == TrustLevel::Verified
+    {
+        ReplyPresentation::Available
+    } else if has_reply_request {
+        ReplyPresentation::Unavailable
+    } else {
+        ReplyPresentation::Hidden
+    };
+
+    TrustPresentation {
+        level,
+        short_label,
+        details_label,
+        reply,
+    }
+}
+
+const fn trust_level(notification: &NotificationView) -> TrustLevel {
+    match notification.attribution.assurance {
+        IdentityAssurance::Authenticated => TrustLevel::Verified,
+        IdentityAssurance::SystemAssociated => TrustLevel::SystemAssociated,
+        IdentityAssurance::PortalAssociated => TrustLevel::PortalAssociated,
+        IdentityAssurance::UserAssociated => TrustLevel::UserAssociated,
+        IdentityAssurance::Unresolved => TrustLevel::Unresolved,
+        IdentityAssurance::Conflict => TrustLevel::Conflict,
+        IdentityAssurance::Relay => TrustLevel::Relay,
+    }
+}
+
+fn identity_presentation(
+    notification: &NotificationView,
+    level: TrustLevel,
+) -> IdentityPresentation {
+    let display_name =
+        clamp_label_text(&notification.attribution.display_name, APP_LABEL_MAX_CHARS);
+    let claimed_name =
+        clamp_label_text(&notification.attribution.claimed_name, APP_LABEL_MAX_CHARS);
+    let (primary_label, secondary_claim) = match notification.attribution.status {
+        AttributionStatus::Verified | AttributionStatus::Recognized => (
+            display_name.into_owned(),
+            differing_claim(&notification.attribution.display_name, &claimed_name),
+        ),
+        AttributionStatus::Relay => (
+            "Command-line notification".to_string(),
+            visible_claim(&claimed_name).map(|claim| format!("App label: {claim}")),
+        ),
+        AttributionStatus::Conflict => (
+            "Unknown application".to_string(),
+            visible_claim(&claimed_name).map(|claim| format!("Claimed app: {claim}")),
+        ),
+        AttributionStatus::Unresolved => {
+            // A claim can help people recognize a message, but never supplies trusted branding
+            let claim = visible_claim(&claimed_name);
+            (
+                claim.unwrap_or("Unknown application").to_string(),
+                claim.map(|_| "App identity could not be verified".to_string()),
+            )
+        }
+    };
+    let badge = match level {
+        TrustLevel::Verified => BadgePresentation::AuthenticatedApplication,
+        TrustLevel::SystemAssociated
+        | TrustLevel::PortalAssociated
+        | TrustLevel::UserAssociated => BadgePresentation::RecognizedApplication,
+        TrustLevel::Unresolved => BadgePresentation::UnknownApplication,
+        TrustLevel::Conflict => BadgePresentation::SuspiciousApplication,
+        TrustLevel::Relay => BadgePresentation::CommandLine,
+    };
+    IdentityPresentation {
+        primary_label,
+        secondary_claim,
+        badge,
+    }
+}
+
+fn differing_claim(display_name: &str, claimed_name: &str) -> Option<String> {
+    let claim = visible_claim(claimed_name)?;
+    (!claim.eq_ignore_ascii_case(display_name.trim())).then(|| format!("App label: {claim}"))
+}
+
+fn visible_claim(claim: &str) -> Option<&str> {
+    let claim = claim.trim();
+    (!claim.is_empty() && claim != "Unknown application").then_some(claim)
+}
+
+pub(super) fn notification_kind(notification: &NotificationView) -> NotificationKind {
+    let category_class = notification
+        .category
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if communication_category_class(category_class)
+        || notification.inline_reply.available
+        || notification
+            .actions
+            .iter()
+            .any(|action| action.key == "inline-reply")
+    {
+        NotificationKind::Communication
+    } else if media_category_class(category_class) {
+        NotificationKind::Media
+    } else {
+        NotificationKind::Utility
+    }
+}
+
+fn media_category_class(category_class: &str) -> bool {
+    ["image", "media", "photo", "video", "audio"]
+        .iter()
+        .any(|candidate| category_class.eq_ignore_ascii_case(candidate))
+}
+
+fn communication_category_class(category_class: &str) -> bool {
+    [
+        "call",
+        "email",
+        "im",
+        "presence",
+        "chat",
+        "message",
+        "social",
+        "voicemail",
+    ]
+    .iter()
+    .any(|candidate| category_class.eq_ignore_ascii_case(candidate))
+}
+
+fn visible_actions(notification: &NotificationView, kind: NotificationKind) -> ActionPresentation {
+    let default_policy = notification.attribution.default_activation_policy();
+    let button_policy = notification.attribution.action_button_policy();
+    // Only unconditional default activation becomes a whole-card action
+    let advertised_default = notification
+        .actions
+        .iter()
+        .find(|action| action.key == "default");
+    let default_key = (default_policy == ApplicationActionPolicy::Allow)
+        .then(|| advertised_default.map(|action| action.key.clone()))
+        .flatten();
+    let mut actions = notification
+        .actions
+        .iter()
+        .filter(|action| {
+            action.key != "inline-reply"
+                && !action.key.trim().is_empty()
+                && !action.label.trim().is_empty()
+        })
+        .filter_map(|action| {
+            let policy = if action.key == "default" {
+                default_policy
+            } else {
+                button_policy
+            };
+            // Allowed defaults keep a labeled button while blank labels use card activation
+            (policy != ApplicationActionPolicy::Deny
+                && !(action.key == "default"
+                    && policy == ApplicationActionPolicy::Allow
+                    && action.label.trim().is_empty()))
+            .then(|| action_view(action, policy))
+        })
+        .collect::<Vec<_>>();
+    if default_policy == ApplicationActionPolicy::Confirm
+        && advertised_default.is_some_and(|action| action.label.trim().is_empty())
+    {
+        // Confirmable blank defaults need an explicit control instead of hidden card activation
+        actions.push(ActionView {
+            key: "default".to_string(),
+            label: "Open notification".to_string(),
+            policy: ApplicationActionPolicy::Confirm,
+        });
+    }
+    let overflow = actions.split_off(actions.len().min(kind.action_limit()));
+    ActionPresentation {
+        default_key,
+        primary: actions,
+        overflow,
+    }
+}
+
+fn action_view(action: &Action, policy: ApplicationActionPolicy) -> ActionView {
+    ActionView {
+        key: action.key.clone(),
+        label: clamp_label_text(&action.label, ACTION_LABEL_MAX_CHARS).into_owned(),
+        policy,
+    }
+}
+
+fn thumbnail_kind(notification: &NotificationView) -> ThumbnailKind {
+    let has_content = !notification.image.content_image.data.is_empty();
+    let category_is_media = ["image", "media", "photo"].iter().any(|category| {
+        notification
+            .category
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .eq_ignore_ascii_case(category)
+    });
+    if category_is_media || has_content {
+        return ThumbnailKind::Content;
+    }
+    ThumbnailKind::None
+}
+
+const fn visual_presentation(notification: &NotificationView) -> VisualPresentation {
+    // The daemon has already materialized safe pixels; clients only select a slot
+    let sender = if notification.image.sender_visual.data.is_empty() {
+        SenderVisualPresentation::None
+    } else {
+        match notification.image.sender_visual_role {
+            unixnotis_core::NotificationVisualRole::ConversationAvatar => {
+                // Bounded sender pixels are conversation presentation, not application identity
+                SenderVisualPresentation::ConversationAvatar
+            }
+            unixnotis_core::NotificationVisualRole::ApplicationProvidedIcon => {
+                SenderVisualPresentation::ApplicationProvidedIcon
+            }
+            unixnotis_core::NotificationVisualRole::None
+            | unixnotis_core::NotificationVisualRole::ContentImage => {
+                SenderVisualPresentation::None
+            }
+        }
+    };
+    VisualPresentation {
+        sender,
+        content_image: !notification.image.content_image.data.is_empty(),
+    }
+}
+
+fn relative_time_label(received_at: i64, now: i64) -> String {
+    if received_at <= 0 {
+        return "now".to_string();
+    }
+    let age = now.saturating_sub(received_at).max(0);
+    match age {
+        0..=59 => "now".to_string(),
+        60..=3_599 => format!("{}m", age / 60),
+        3_600..=86_399 => format!("{}h", age / 3_600),
+        _ => format!("{}d", age / 86_400),
+    }
+}
+
+fn nonempty_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}

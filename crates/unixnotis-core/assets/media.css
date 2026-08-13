@@ -5,21 +5,21 @@
  * without touching the rest of widgets.css
  */
 :root {
-  --unixnotis-media-card-radius: 20px;
-  --unixnotis-media-card-min-height: 72px;
-  --unixnotis-media-card-padding-x: 10px;
+  --unixnotis-media-card-radius: 18px;
+  --unixnotis-media-card-min-height: 82px;
+  --unixnotis-media-card-padding-x: 8px;
   --unixnotis-media-card-padding-y: 8px;
-  --unixnotis-media-card-padding-inline-x: 10px;
+  --unixnotis-media-card-padding-inline-x: 8px;
   --unixnotis-media-card-padding-inline-y: 8px;
   --unixnotis-media-card-padding-stacked: 8px;
-  --unixnotis-media-card-padding-showcase-x: 10px;
+  --unixnotis-media-card-padding-showcase-x: 8px;
   --unixnotis-media-card-padding-showcase-y: 8px;
-  --unixnotis-media-button-padding-x: 6px;
+  --unixnotis-media-button-padding-x: 5px;
   --unixnotis-media-button-padding-y: 4px;
-  --unixnotis-media-art-size: 48px;
-  --unixnotis-media-art-radius: 10px;
+  --unixnotis-media-art-size: 56px;
+  --unixnotis-media-art-radius: 12px;
   --unixnotis-media-art-frame-radius: 12px;
-  --unixnotis-media-title-font-size: 13px;
+  --unixnotis-media-title-font-size: 14px;
   --unixnotis-media-title-font-weight: 700;
   --unixnotis-media-source-font-size: 11px;
   --unixnotis-media-artist-font-size: 12px;
@@ -59,51 +59,91 @@
   background: transparent;
 }
 
+/* Player switcher: symmetric chevron docks flanking the card. Quiet glass so
+ * they never compete with the notification list. */
 .unixnotis-media-nav {
-  background-image: linear-gradient(150deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.9));
-  border-radius: 12px;
-  padding: calc((var(--unixnotis-media-nav-size) - 14px) / 2);
-  border: 1px solid alpha(@unixnotis-accent, 0.2);
+  background: alpha(#ffffff, 0.05);
+  border-top: 1px solid alpha(#ffffff, 0.08);
+  border-left: 1px solid alpha(#ffffff, 0.06);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: 999px;
+  padding: 0;
+  margin: 0;
+  min-width: 24px;
+  min-height: 52px;
+  -gtk-icon-size: 16px;
+  font-size: 16px;
   font-weight: 700;
-  font-size: 12px;
-  min-width: var(--unixnotis-media-nav-size);
-  color: @unixnotis-text;
+  color: alpha(#ffffff, 0.80);
   box-shadow:
-    0 6px 12px -10px @unixnotis-shadow-soft,
-    0 0 16px -14px @unixnotis-glow-cyan;
+    inset 0 1px 0 alpha(#ffffff, 0.06),
+    0 2px 6px -4px alpha(#000000, 0.4);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-media-nav:hover {
-  background-image: linear-gradient(150deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.16));
-  border-color: alpha(@unixnotis-accent, 0.5);
+  background: alpha(#ffffff, 0.10);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.06);
+  border-bottom-color: alpha(#ffffff, 0.03);
+  color: #ffffff;
+  box-shadow:
+    0 8px 16px -10px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.10);
 }
 
-.unixnotis-media-nav-prev,
-.unixnotis-media-nav-next {
-  min-width: var(--unixnotis-media-nav-size);
+.unixnotis-media-nav:active {
+  background: alpha(#ffffff, 0.14);
+  color: #ffffff;
+}
+
+.unixnotis-media-nav:backdrop {
+  background: alpha(#ffffff, 0.035);
+  border-color: alpha(#ffffff, 0.05);
+  box-shadow: inset 0 1px 0 alpha(#ffffff, 0.04);
+}
+
+/* Keep the arrows clear of the rounded chip edges so the glyph never clips. */
+.unixnotis-media-nav image,
+.unixnotis-media-nav .icon {
+  color: inherit;
 }
 
 .unixnotis-media-position {
-  color: @unixnotis-muted;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  color: alpha(#ffffff, 0.60);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  background: alpha(#ffffff, 0.05);
+  border: 1px solid alpha(#ffffff, 0.08);
+  border-radius: 999px;
+  padding: 1px 8px;
+  box-shadow: none;
 }
 
+/* Glass card: translucent with a soft top sheen, so it reads as a pane of
+ * frosted glass rather than a solid panel. Deliberately low-contrast so the
+ * notification feed stays the visual center. */
 .unixnotis-media-card {
-  background-image: linear-gradient(165deg, @unixnotis-notification-bg-1, alpha(#0f1828, 0.94));
-  border-radius: 18px;
-  border: 1px solid @unixnotis-card-border;
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.07) 0%, alpha(#ffffff, 0.02) 100%);
+  border-top: 1px solid alpha(#ffffff, 0.10);
+  border-left: 1px solid alpha(#ffffff, 0.07);
+  border-right: 1px solid alpha(#ffffff, 0.04);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  border-radius: var(--unixnotis-media-card-radius);
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
-  min-height: 68px;
+  min-height: var(--unixnotis-media-card-min-height);
   box-shadow:
-    0 14px 26px -20px @unixnotis-shadow-strong,
-    0 0 22px -20px alpha(@unixnotis-accent-2, 0.16),
-    inset 0 0 0 1px alpha(#ffffff, 0.04);
+    0 4px 12px -8px alpha(#000000, 0.4),
+    inset 0 1px 0 alpha(#ffffff, 0.05);
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
 .unixnotis-media-card-carousel {
   padding: var(--unixnotis-media-card-padding-y) var(--unixnotis-media-card-padding-x);
-  min-height: 68px;
+  min-height: var(--unixnotis-media-card-min-height);
 }
 
 .unixnotis-media-card-inline {
@@ -125,8 +165,40 @@
   padding: var(--unixnotis-media-card-padding-showcase-y) var(--unixnotis-media-card-padding-showcase-x);
 }
 
+/* Playing is a gentle glass brightening, not a colored outline. */
 .unixnotis-media-card.playing {
-  border-left: 1px solid @unixnotis-card-border;
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.09) 0%, alpha(#ffffff, 0.03) 100%);
+  border-top-color: alpha(#ffffff, 0.14);
+  border-left-color: alpha(#ffffff, 0.10);
+  border-right-color: alpha(#ffffff, 0.05);
+  border-bottom-color: alpha(#ffffff, 0.02);
+  box-shadow:
+    0 8px 16px -12px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.07);
+}
+
+.unixnotis-media-card:hover {
+  background-image: linear-gradient(165deg, alpha(#ffffff, 0.09) 0%, alpha(#ffffff, 0.03) 100%);
+  border-top: 1px solid alpha(#ffffff, 0.13);
+  border-left: 1px solid alpha(#ffffff, 0.10);
+  border-right: 1px solid alpha(#ffffff, 0.05);
+  border-bottom: 1px solid alpha(#ffffff, 0.02);
+  box-shadow:
+    0 8px 16px -12px alpha(#000000, 0.5),
+    inset 0 1px 0 alpha(#ffffff, 0.07);
+}
+
+/* Keep depth visible when the panel is unfocused, matching the widget family. */
+.unixnotis-media-card:backdrop {
+  border-top-color: alpha(#ffffff, 0.07);
+  border-left-color: alpha(#ffffff, 0.05);
+  border-right-color: alpha(#ffffff, 0.03);
+  border-bottom-color: alpha(#ffffff, 0.02);
+  box-shadow:
+    0 12px 24px -22px alpha(#000000, 0.35),
+    0 0 0 1px alpha(#ffffff, 0.04),
+    inset 0 1px 0 alpha(#ffffff, 0.04),
+    inset 0 -2px 6px -5px alpha(#000000, 0.35);
 }
 
 /*
@@ -156,7 +228,6 @@
 .unixnotis-media-art {
   min-width: var(--unixnotis-media-art-size);
   min-height: var(--unixnotis-media-art-size);
-  border-radius: 10px;
   border-radius: var(--unixnotis-media-art-radius);
   background: alpha(#000000, 0.12);
 }
@@ -164,9 +235,8 @@
 .unixnotis-media-art-frame {
   min-width: var(--unixnotis-media-art-frame-size);
   min-height: var(--unixnotis-media-art-frame-size);
-  border-radius: 12px;
   border-radius: var(--unixnotis-media-art-frame-radius);
-  background: alpha(#000000, 0.12);
+  background: alpha(@unixnotis-surface-strong-base, 0.44);
   border-top: 1px solid alpha(#ffffff, 0.10);
   border-left: 1px solid alpha(#ffffff, 0.08);
   border-right: 1px solid alpha(#ffffff, 0.04);
@@ -175,11 +245,12 @@
 }
 
 .unixnotis-media-art.empty {
-  background: alpha(#000000, 0.18);
+  background: alpha(@unixnotis-surface-strong-base, 0.58);
+  border-color: alpha(@unixnotis-accent, 0.10);
 }
 
 .unixnotis-media-source {
-  color: alpha(@unixnotis-accent, 0.75);
+  color: alpha(@unixnotis-accent, 0.65);
   font-weight: 700;
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -188,9 +259,10 @@
 
 .unixnotis-media-title {
   color: #ffffff;
-  font-weight: 800;
-  font-size: 13px;
+  font-weight: 750;
+  font-size: var(--unixnotis-media-title-font-size);
   letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .unixnotis-marquee {
@@ -200,9 +272,10 @@
 }
 
 .unixnotis-media-artist {
-  color: #cbd5e1;
+  color: alpha(#cbd5e1, 0.85);
   font-weight: 500;
   font-size: 12px;
+  line-height: 1.25;
 }
 
 .unixnotis-media-artist.empty {
@@ -213,75 +286,21 @@
   background: transparent;
 }
 
+/* Transport buttons share the toggle/action glass. */
 .unixnotis-media-button {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg, alpha(@unixnotis-surface, 0.95));
-  border-radius: 10px;
-  border: 1px solid alpha(@unixnotis-accent, 0.2);
-  padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
-  box-shadow:
-    0 6px 14px -12px @unixnotis-shadow-soft,
-    0 0 14px -14px @unixnotis-glow-cyan;
-}
-
-.unixnotis-media-button:hover {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-hover, alpha(@unixnotis-accent-2, 0.2));
-  border-color: alpha(@unixnotis-accent, 0.5);
-}
-
-.unixnotis-media-button.primary {
-  background-image: linear-gradient(160deg, @unixnotis-action-bg-active, alpha(@unixnotis-accent-2, 0.28));
-  border-color: alpha(@unixnotis-accent, 0.75);
-}
-
-/* Restrained media transport */
-.unixnotis-media-card {
-  background: alpha(#ffffff, 0.035);
-  border-top: 1px solid alpha(#ffffff, 0.08);
-  border-left: 1px solid alpha(#ffffff, 0.06);
-  border-right: 1px solid alpha(#ffffff, 0.04);
-  border-bottom: 1px solid alpha(#ffffff, 0.02);
-  border-radius: 16px;
-  border-radius: var(--unixnotis-media-card-radius);
-  box-shadow: 0 4px 10px -8px alpha(#000000, 0.5);
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
-}
-
-.unixnotis-media-card:hover {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
-  border-top-color: alpha(#ffffff, 0.14);
-  border-left-color: alpha(#ffffff, 0.10);
-  border-right-color: alpha(#ffffff, 0.06);
-  border-bottom-color: alpha(#ffffff, 0.03);
-  box-shadow: 0 8px 20px -10px alpha(#000000, 0.7), inset 0 1px 0 alpha(#ffffff, 0.05);
-}
-
-.unixnotis-media-card.playing {
-  background-image: linear-gradient(135deg, alpha(#ffffff, 0.075), alpha(#ffffff, 0.025));
-  border-top: 1px solid alpha(#ffffff, 0.16);
-  border-left: 1px solid alpha(#ffffff, 0.12);
-  border-right: 1px solid alpha(#ffffff, 0.06);
-  border-bottom: 1px solid alpha(#ffffff, 0.03);
-  box-shadow:
-    0 16px 36px -20px alpha(#000000, 0.8),
-    inset 0 1px 0 alpha(#ffffff, 0.12);
-}
-
-.unixnotis-media-button,
-.unixnotis-media-nav {
   background: alpha(#ffffff, 0.04);
   border-top: 1px solid alpha(#ffffff, 0.08);
   border-left: 1px solid alpha(#ffffff, 0.06);
   border-right: 1px solid alpha(#ffffff, 0.04);
   border-bottom: 1px solid alpha(#ffffff, 0.02);
-  box-shadow: none;
-  color: alpha(#ffffff, 0.85);
-  border-radius: 999px;
   border-radius: var(--unixnotis-media-button-radius);
-  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, transform 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out;
+  padding: var(--unixnotis-media-button-padding-y) var(--unixnotis-media-button-padding-x);
+  box-shadow: none;
+  color: alpha(#ffffff, 0.78);
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out;
 }
 
-.unixnotis-media-button:hover,
-.unixnotis-media-nav:hover {
+.unixnotis-media-button:hover {
   background: alpha(#ffffff, 0.09);
   border-top-color: alpha(#ffffff, 0.16);
   border-left-color: alpha(#ffffff, 0.12);
@@ -289,13 +308,23 @@
   border-bottom-color: alpha(#ffffff, 0.03);
   box-shadow: 0 4px 10px -5px alpha(#000000, 0.4), inset 0 1px 0 alpha(#ffffff, 0.05);
   color: #ffffff;
-  transform: translateY(-1px);
 }
 
+.unixnotis-media-button:disabled,
+.unixnotis-media-button:disabled:hover {
+  background: alpha(#ffffff, 0.04);
+  border: 1px solid alpha(#ffffff, 0.08);
+  color: alpha(#ffffff, 0.50);
+  -gtk-icon-filter: none;
+  box-shadow: none;
+}
+
+/* Primary play: a clean white pill so it reads as the main control without
+ * borrowing the accent hue. */
 .unixnotis-media-button.primary {
-  background: #ffffff;
-  border: 1px solid #ffffff;
-  color: #0f172a;
+  background: @unixnotis-text;
+  border: 1px solid @unixnotis-text;
+  color: @unixnotis-surface-base;
   box-shadow: 0 4px 10px -3px alpha(#000000, 0.3);
 }
 
@@ -304,24 +333,34 @@
   border-color: alpha(#ffffff, 0.90);
   color: #020617;
   box-shadow: 0 6px 14px -2px alpha(#000000, 0.45);
-  transform: translateY(-1.5px) scale(1.04);
+}
+
+/* Transport icons stay legible on every player (browser MPRIS icons can arrive
+ * dark); the primary play button keeps its dark glyph. */
+.unixnotis-media-button image,
+.unixnotis-media-button .icon,
+.unixnotis-media-button:disabled image,
+.unixnotis-media-button:disabled .icon {
+  color: alpha(#ffffff, 0.90);
+  -gtk-icon-palette: success alpha(#ffffff, 0.90), warning alpha(#ffffff, 0.90), error alpha(#ffffff, 0.90);
+  -gtk-icon-filter: none;
+  -gtk-icon-shadow: 0 0 0 transparent;
+}
+
+.unixnotis-media-button.primary image,
+.unixnotis-media-button.primary .icon {
+  color: @unixnotis-surface-base;
+  -gtk-icon-palette: success @unixnotis-surface-base, warning @unixnotis-surface-base, error @unixnotis-surface-base;
+  -gtk-icon-shadow: 0 0 0 transparent;
+}
+
+.unixnotis-media-button.primary:hover image,
+.unixnotis-media-button.primary:hover .icon {
+  color: #020617;
 }
 
 .unixnotis-media-button:focus,
 .unixnotis-media-nav:focus {
   /* Remove default blue focus rings from GTK button selections */
   outline: none;
-}
-
-/* Compact carousel navigation to protect panel width budget */
-.unixnotis-media-nav {
-  min-width: 18px;
-  min-height: 18px;
-  padding: 3px;
-  margin: 0;
-}
-
-.unixnotis-media-nav-prev,
-.unixnotis-media-nav-next {
-  min-width: 18px;
 }

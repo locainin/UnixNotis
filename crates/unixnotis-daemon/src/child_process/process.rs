@@ -40,35 +40,27 @@ impl UiProcessKind {
 
     pub(super) fn mark_running(self, state: &DaemonState, running: bool) {
         match self {
-            Self::Popups => state.set_popups_running(running),
-            Self::Center => {
-                let _ = running;
-                // Center readiness is tied to live subscriptions
-                // A spawned process alone is not enough to mark it ready
-                // Spawned is not the same as subscribed and ready
-                // The center flips this to true once its control streams are active
-                state.set_panel_ready(false);
-            }
+            Self::Popups => state.set_popups_process_running(running),
+            Self::Center => state.set_center_process_running(running),
         }
     }
 
-    pub(super) fn build_command(self, args: &Args) -> Command {
-        let mut command = match self {
-            Self::Popups => {
-                if let Some(path) = resolve_popups_path() {
-                    Command::new(path)
-                } else {
-                    Command::new("unixnotis-popups")
-                }
-            }
-            Self::Center => {
-                if let Some(path) = resolve_center_path() {
-                    Command::new(path)
-                } else {
-                    Command::new("unixnotis-center")
-                }
-            }
+    pub(super) fn build_command(self, args: &Args) -> Result<Command> {
+        let path = match self {
+            Self::Popups => resolve_popups_path(),
+            Self::Center => resolve_center_path(),
         };
+        let path = path.ok_or_else(|| {
+            anyhow!(
+                "{} is missing beside the daemon executable; refusing a PATH-based child launch",
+                self.label()
+            )
+        })?;
+        Ok(Self::build_command_for_path(args, path))
+    }
+
+    fn build_command_for_path(args: &Args, path: PathBuf) -> Command {
+        let mut command = Command::new(path);
 
         // Journal should keep child logs tied to the daemon service
         // Inherited output makes crash lines easier to trace later
@@ -76,7 +68,7 @@ impl UiProcessKind {
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
 
-        apply_parent_death_signal(&mut command);
+        apply_parent_death_signal(&mut command, std::process::id());
 
         if let Some(config) = args.config.as_ref() {
             // GTK re-parses argv in child apps, so custom config paths travel by env instead
@@ -90,10 +82,10 @@ impl UiProcessKind {
     }
 
     pub(super) fn start(self, args: &Args) -> Result<Child> {
-        let mut command = self.build_command(args);
+        let mut command = self.build_command(args)?;
         let label = self.label();
         command.spawn().map_err(|err| {
-            anyhow!("failed to start {label} ({err}); build it or install it on PATH")
+            anyhow!("failed to start {label} ({err}); install it beside the daemon executable")
         })
     }
 }

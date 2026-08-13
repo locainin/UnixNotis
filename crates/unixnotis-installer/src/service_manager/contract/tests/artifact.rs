@@ -1,27 +1,30 @@
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
 
 use crate::service_manager::backends::systemd::SERVICE_NAME as UNIXNOTIS_DAEMON_SERVICE;
 use crate::service_manager::contract::MANAGED_DIRECTORY_MARKER;
-use crate::service_manager::{ServiceArtifact, ServiceArtifactKind, ServiceManager};
+use crate::service_manager::{
+    ServiceArtifact, ServiceArtifactKind, ServiceArtifactState, ServiceManager,
+};
 
 #[test]
 fn systemd_backend_reports_primary_artifact_path() {
-    let root = PathBuf::from("/tmp/systemd/user");
+    let root = std::env::temp_dir().join("systemd").join("user");
     let manager = ServiceManager::systemd_user(root.clone());
 
     assert_eq!(manager.artifact_root(), root);
     assert_eq!(
         manager.primary_artifact_path(),
-        PathBuf::from("/tmp/systemd/user").join(UNIXNOTIS_DAEMON_SERVICE)
+        root.join(UNIXNOTIS_DAEMON_SERVICE)
     );
 }
 
 #[test]
 fn systemd_backend_uses_file_artifact_not_external_renderer() {
-    let manager = ServiceManager::systemd_user(PathBuf::from("/tmp/systemd/user"));
-    let artifacts = manager.artifacts(std::path::Path::new("/tmp/bin"));
+    let manager = ServiceManager::systemd_user(std::env::temp_dir().join("systemd").join("user"));
+    let binary_root = std::env::temp_dir().join("bin");
+    let artifacts = manager.artifacts(&binary_root);
 
     assert_eq!(artifacts[0].kind, ServiceArtifactKind::File);
     assert!(artifacts[0].contents.is_some());
@@ -41,6 +44,10 @@ fn managed_directory_presence_requires_marker_file() {
     };
 
     assert!(!artifact.is_present_safely());
+    assert_eq!(
+        artifact.inspect().expect("missing marker state"),
+        ServiceArtifactState::UnexpectedObject
+    );
 
     fs::write(service_dir.join(MANAGED_DIRECTORY_MARKER), "unixnotis\n").expect("marker");
 
@@ -193,6 +200,53 @@ fn managed_directory_marker_rejects_wrong_contents() {
     assert!(artifact.exists_at_path_but_not_safely());
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn artifact_inspection_propagates_non_missing_path_errors() {
+    let root = test_root("artifact-inspection-error");
+    fs::create_dir_all(&root).expect("create artifact inspection root");
+    let regular_parent = root.join("regular-parent");
+    fs::write(&regular_parent, "not a directory").expect("create invalid parent");
+    let artifact = ServiceArtifact {
+        path: regular_parent.join("service"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("owned".to_string()),
+        mode: None,
+    };
+
+    assert!(
+        artifact.inspect().is_err(),
+        "path lookup failures must not become missing artifacts"
+    );
+    fs::remove_dir_all(root).expect("remove artifact inspection fixture");
+}
+
+#[test]
+fn managed_marker_inspection_propagates_permission_errors() {
+    // Root bypasses directory mode bits, so this boundary cannot be observed in root CI
+    if rustix::process::getuid().as_raw() == 0 {
+        return;
+    }
+    let root = test_root("managed-marker-inspection-error");
+    let service_dir = root.join("service");
+    fs::create_dir_all(&service_dir).expect("create managed service directory");
+    fs::set_permissions(&service_dir, fs::Permissions::from_mode(0o000))
+        .expect("remove service directory search permission");
+    let artifact = ServiceArtifact {
+        path: service_dir.clone(),
+        kind: ServiceArtifactKind::ManagedDirectory,
+        contents: None,
+        mode: None,
+    };
+
+    assert!(
+        artifact.inspect().is_err(),
+        "marker lookup failures must not become an absent marker"
+    );
+    fs::set_permissions(&service_dir, fs::Permissions::from_mode(0o700))
+        .expect("restore service directory permission");
+    fs::remove_dir_all(root).expect("remove marker inspection fixture");
 }
 
 #[test]

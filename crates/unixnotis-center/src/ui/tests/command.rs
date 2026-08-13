@@ -7,7 +7,7 @@ fn available_command_queue_receives_the_original_command() {
 
     try_send_command(&command_tx, UiCommand::SetDnd(true));
 
-    assert_eq!(command_rx.try_recv(), Ok(UiCommand::SetDnd(true)));
+    assert!(matches!(command_rx.try_recv(), Ok(UiCommand::SetDnd(true))));
 }
 
 #[test]

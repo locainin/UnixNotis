@@ -14,14 +14,11 @@ pub fn diagnostic_mode() -> bool {
 }
 
 fn diagnostic_mode_from(value: Option<&str>) -> bool {
-    matches!(
-        value
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "1" | "true" | "yes" | "on"
-    )
+    let value = value.unwrap_or_default().trim();
+    value == "1"
+        || ["true", "yes", "on"]
+            .iter()
+            .any(|expected| value.eq_ignore_ascii_case(expected))
 }
 
 /// Returns the default redaction length for logs

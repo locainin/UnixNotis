@@ -13,7 +13,9 @@ serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
 
+[build-dependencies]
+glib-build-tools.workspace = true
+
 [[bin]]
 name = "unixnotis-css-validate"
 path = "src/bin/css_validate.rs"
-test = false

@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use unixnotis_core::{build_modern_theme_custom_properties, gtk_css_features_for_version, Config};
+use unixnotis_core::{build_modern_theme_custom_properties, Config};
 
 use super::super::files::format_display_path;
 use super::super::geometry::{collect_custom_property_scopes, CssCustomPropertyScopes};
@@ -73,5 +73,5 @@ pub(in crate::css_check::lint) fn lint_css_contents_with_properties(
 }
 
 fn generated_theme_token_css(config: &Config) -> String {
-    build_modern_theme_custom_properties(&config.theme, gtk_css_features_for_version(4, 16))
+    build_modern_theme_custom_properties(&config.theme)
 }

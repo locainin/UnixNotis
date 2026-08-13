@@ -6,29 +6,60 @@ use crate::ui::notifications::test_support as support;
 fn make_view(is_transient: bool) -> NotificationView {
     NotificationView {
         id: 7,
+        generation: 7,
         app_name: "Test".to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: "Test".to_string(),
+            group_key: "test:Test".to_string(),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: "summary".to_string(),
         body: "body".to_string(),
         actions: vec![Action {
             key: "default".to_string(),
             label: "Open".to_string(),
         }],
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
     }
 }
 
 fn view(id: u32, app_name: &str, is_transient: bool) -> NotificationView {
     NotificationView {
         id,
+        generation: u64::from(id),
         app_name: app_name.to_string(),
+        attribution: unixnotis_core::NotificationAttribution {
+            display_name: app_name.to_string(),
+            group_key: format!("test:{app_name}"),
+            ..unixnotis_core::NotificationAttribution::default()
+        },
         summary: format!("summary {id}"),
         body: format!("body {id}"),
         actions: Vec::new(),
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
         urgency: 1,
+        category: String::new(),
         is_transient,
+        received_at_unix_seconds: 0,
         image: NotificationImage::default(),
+        popup_decision: unixnotis_core::PopupDecisionRecord::default(),
+        popup_hide_after_ms: 0,
+    }
+}
+
+fn notification_key(id: u32) -> NotificationKey {
+    NotificationKey {
+        id,
+        generation: u64::from(id),
     }
 }
 
@@ -42,11 +73,11 @@ fn active_move_policy_covers_history_new_and_non_front_rows() {
 }
 
 #[test]
-fn collapsed_group_stacked_policy_requires_collapsed_group_with_multiple_rows() {
-    assert!(!collapsed_group_is_stacked(false, 0));
-    assert!(!collapsed_group_is_stacked(false, 1));
-    assert!(collapsed_group_is_stacked(false, 2));
-    assert!(!collapsed_group_is_stacked(true, 2));
+fn collapsed_group_preview_requires_a_collapsed_group_with_multiple_rows() {
+    assert!(!is_collapsed_group_preview(false, 0));
+    assert!(!is_collapsed_group_preview(false, 1));
+    assert!(is_collapsed_group_preview(false, 2));
+    assert!(!is_collapsed_group_preview(true, 2));
 }
 
 #[test]
@@ -246,7 +277,7 @@ fn mark_closed_dismissed_row_removes_entry_and_marks_group_dirty() {
     list.flush_rebuild();
     let key = list.entries.get(&1).expect("entry").app_key.clone();
 
-    list.mark_closed(1, CloseReason::DismissedByUser);
+    list.mark_closed(notification_key(1), CloseReason::DismissedByUser);
 
     assert!(!list.entries.contains_key(&1));
     assert!(list.active_order.is_empty());
@@ -262,7 +293,7 @@ fn mark_closed_expired_row_archives_to_history_when_policy_allows_it() {
     list.flush_rebuild();
     let key = list.entries.get(&1).expect("entry").app_key.clone();
 
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
 
     assert!(list.active_order.is_empty());
     assert_eq!(
@@ -287,12 +318,49 @@ fn mark_closed_archived_row_does_not_duplicate_existing_history_id() {
     list.seed(vec![view(1, "Terminal", false)], Vec::new());
     list.flush_rebuild();
 
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
     list.needs_rebuild = false;
-    list.mark_closed(1, CloseReason::Expired);
+    list.mark_closed(notification_key(1), CloseReason::Expired);
 
     assert_eq!(
         list.history_order.iter().copied().collect::<Vec<_>>(),
         vec![1]
     );
+}
+
+#[gtk::test]
+fn reordered_update_cannot_replace_a_newer_row_generation() {
+    let mut list = support::make_list();
+    let mut newest = view(1, "Terminal", false);
+    newest.generation = 3;
+    list.seed(vec![newest], Vec::new());
+    let mut stale = view(1, "Terminal", false);
+    stale.generation = 2;
+    stale.summary = "stale payload".to_string();
+
+    list.add_or_update(stale, true);
+
+    let current = &list.entries.get(&1).expect("current row").view;
+    assert_eq!(current.generation, 3);
+    assert_ne!(current.summary, "stale payload");
+}
+
+#[gtk::test]
+fn reordered_close_cannot_remove_or_archive_a_newer_row_generation() {
+    let mut list = support::make_list();
+    let mut replacement = view(1, "Terminal", false);
+    replacement.generation = 3;
+    list.seed(vec![replacement], Vec::new());
+
+    list.mark_closed(
+        NotificationKey {
+            id: 1,
+            generation: 2,
+        },
+        CloseReason::Expired,
+    );
+
+    assert!(list.entries.get(&1).expect("replacement row").is_active);
+    assert_eq!(list.active_order.iter().copied().collect::<Vec<_>>(), [1]);
+    assert!(list.history_order.is_empty());
 }

@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use unixnotis_core::ControlProxy;
+use unixnotis_core::{ensure_control_api_version, log_session_bus_identity, ControlProxy};
 use zbus::Connection;
 
 use crate::cli::{Args, Command};
@@ -13,10 +13,18 @@ pub fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
     let command = args.command;
+    // Semantic checks happen before runtime and D-Bus setup
+    command.validate()?;
 
     if command.is_synchronous() {
         // Preset and CSS work should not pay for an unused asynchronous runtime
-        handle_local_command(command, crate::css_check::run, crate::preset::run_preset)?;
+        handle_local_command(
+            command,
+            crate::css_check::run,
+            crate::preset::run_preset,
+            crate::session_environment::sync,
+            crate::theme::run,
+        )?;
         return Ok(());
     }
 
@@ -50,9 +58,15 @@ async fn run_async(command: Command) -> Result<()> {
     let connection = Connection::session()
         .await
         .context("connect to session bus")?;
+    log_session_bus_identity(&connection, "noticenterctl")
+        .await
+        .context("read noticenterctl session-bus identity")?;
     let proxy = ControlProxy::new(&connection)
         .await
         .context("connect to unixnotis control interface")?;
+    ensure_control_api_version(&proxy)
+        .await
+        .context("validate UnixNotis component version")?;
 
     crate::dbus::handle_command(&proxy, command).await
 }

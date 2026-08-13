@@ -11,7 +11,7 @@ use unixnotis_ui::icons::DesktopIconIndex;
 
 use crate::dbus::UiCommand;
 
-use super::super::icons::TextureCache;
+use super::super::icons::{TextureCache, ThemeIconCache};
 use super::super::window::build_popup_window;
 use super::model::UiState;
 
@@ -42,21 +42,33 @@ impl UiState {
             config_path,
             css,
             command_tx,
+            popup_event_tx: None,
             popup_window,
             popup_stack,
             popup_input_region,
             popups: HashMap::new(),
             popup_order: VecDeque::new(),
+            hidden_popups: std::collections::HashSet::new(),
             visible_popups: Vec::new(),
             // Startup remains permissive until the daemon seed arrives
             control_state: ControlState::default(),
             desktop_icons: DesktopIconIndex::new(),
             icon_sources_dirty,
+            icon_source_generation: 0,
             _app_info_monitor: app_info_monitor,
             _icon_theme: icon_theme,
             icon_cache: HashMap::new(),
             icon_cache_order: VecDeque::new(),
             icon_texture_cache: Rc::new(RefCell::new(TextureCache::new_for_popups())),
+            theme_icon_cache: ThemeIconCache::new_for_popups(),
         }
+    }
+
+    pub(crate) fn set_popup_event_sender(
+        &mut self,
+        sender: async_channel::Sender<crate::dbus::UiEvent>,
+    ) {
+        // The production event loop owns this sender; tests can leave it unset
+        self.popup_event_tx = Some(sender);
     }
 }

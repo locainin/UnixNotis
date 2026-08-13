@@ -18,6 +18,8 @@ fn daemon_command_is_not_dispatched_to_local_handlers() {
             preset_called = true;
             Ok(())
         },
+        |_| Ok(()),
+        |_| Ok(()),
     )
     .expect("ignore daemon command in local dispatcher");
 
@@ -33,6 +35,8 @@ fn local_handler_error_is_returned_to_the_caller() {
     let result = handle_local_command(
         Command::CssCheck { config: None },
         |_| anyhow::bail!("CSS check failed"),
+        |_| -> Result<()> { Ok(()) },
+        |_| -> Result<()> { Ok(()) },
         |_| -> Result<()> { Ok(()) },
     );
 

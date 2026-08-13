@@ -2,8 +2,9 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
-use super::args::{DndState, DoctorServiceManagerArg, PresetCommand};
+use super::args::{DndState, DoctorServiceManagerArg, PresetCommand, ThemeCommand};
 use super::{DebugLevelArg, InhibitScopeArg};
+use super::{DndClockTime, DndDuration};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -16,10 +17,16 @@ pub enum Command {
     },
     // Close the panel if it is visible
     ClosePanel,
+    // Rebuild the daemon's desktop application index immediately
+    RefreshApplications,
     // Set or toggle Do Not Disturb mode
     Dnd {
         #[arg(value_enum)]
         state: DndState,
+        #[arg(long = "for", value_name = "DURATION", conflicts_with = "until")]
+        for_duration: Option<DndDuration>,
+        #[arg(long, value_name = "HH:MM", conflicts_with = "for_duration")]
+        until: Option<DndClockTime>,
     },
     // Clear active notifications and saved history
     Clear,
@@ -31,6 +38,10 @@ pub enum Command {
     ClearHistory,
     // Dismiss a single notification by identifier
     Dismiss {
+        id: u32,
+    },
+    // Explain application identity and popup suppression for one active notification
+    ExplainNotification {
         id: u32,
     },
     // List active notifications; full output requires diagnostic mode
@@ -71,24 +82,61 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         config: Option<PathBuf>,
     },
+    // Import the compositor session environment and restart the installed user service
+    SyncSessionEnvironment {
+        #[arg(long, value_enum, default_value = "auto")]
+        service_manager: DoctorServiceManagerArg,
+    },
     // Export, inspect, or import a shareable preset bundle
     Preset {
         #[command(subcommand)]
         command: PresetCommand,
     },
+    // Export editable bundled theme files without changing the active configuration
+    Theme {
+        #[command(subcommand)]
+        command: ThemeCommand,
+    },
 }
 
 impl Command {
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        if let Self::Dnd {
+            state,
+            for_duration,
+            until,
+        } = self
+        {
+            let has_deadline = for_duration.is_some() || until.is_some();
+            if has_deadline && !matches!(state, DndState::On) {
+                return Err(anyhow::anyhow!(
+                    "--for and --until are valid only with `dnd on`"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) const fn is_local_only(&self) -> bool {
         // Local-only commands should not fail just because D-Bus is unavailable
         matches!(
             self,
-            Self::CssCheck { .. } | Self::Doctor { .. } | Self::Preset { .. }
+            Self::CssCheck { .. }
+                | Self::Doctor { .. }
+                | Self::Preset { .. }
+                | Self::Theme { .. }
+                | Self::SyncSessionEnvironment { .. }
         )
     }
 
     pub(crate) const fn is_synchronous(&self) -> bool {
         // Doctor uses local inputs but still needs asynchronous D-Bus and process timeouts
-        matches!(self, Self::CssCheck { .. } | Self::Preset { .. })
+        matches!(
+            self,
+            Self::CssCheck { .. }
+                | Self::Preset { .. }
+                | Self::Theme { .. }
+                | Self::SyncSessionEnvironment { .. }
+        )
     }
 }

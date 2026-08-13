@@ -1,9 +1,11 @@
 use super::super::super::super::widgets::{CardWidgetConfig, StatWidgetConfig};
 use super::*;
+use crate::CommandSpec;
 use crate::{
-    Config, PanelActionConfig, PanelActionId, PanelConfig, PanelSection, PanelWidgetSection,
-    PopupConfig, ToggleLayout, WidgetPluginConfig, CURRENT_CONFIG_VERSION, MAX_CARD_WIDGETS,
-    MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS, MAX_TOTAL_WIDGETS,
+    Config, DndMenuChoice, DndMenuTrigger, PanelActionConfig, PanelActionId, PanelConfig,
+    PanelSection, PanelWidgetSection, PopupConfig, ToggleLayout, WidgetPluginConfig,
+    CURRENT_CONFIG_VERSION, MAX_CARD_WIDGETS, MAX_STAT_WIDGETS, MAX_TOGGLE_WIDGETS,
+    MAX_TOTAL_WIDGETS,
 };
 use proptest::prelude::*;
 use proptest::test_runner::RngSeed;
@@ -137,7 +139,7 @@ proptest! {
         let mut config = Config::default();
         config.widgets.stats[0].plugin = Some(WidgetPluginConfig {
             api_version,
-            command,
+            command: CommandSpec::direct(command, [] as [&str; 0]),
             ..WidgetPluginConfig::default()
         });
 
@@ -203,10 +205,48 @@ fn sanitize_clamps_panel_and_popup_sizes() {
 }
 
 #[test]
+fn sanitize_bounds_every_custom_notification_metadata_string() {
+    let mut config = Config::default();
+    let oversized = "界".repeat(160);
+    config.panel.notification_metadata.critical_label = oversized.clone();
+    config.panel.notification_metadata.low_label = oversized.clone();
+    config.panel.notification_metadata.normal_label = oversized.clone();
+    config.panel.notification_metadata.relative_now = oversized.clone();
+    config.panel.notification_metadata.relative_minutes = oversized.clone();
+    config.panel.notification_metadata.relative_hours = oversized.clone();
+    config.panel.notification_metadata.relative_days = oversized.clone();
+    config.panel.notification_metadata.transient_label = oversized.clone();
+    config.panel.notification_metadata.live_label = oversized.clone();
+    config.panel.notification_metadata.history_label = oversized.clone();
+    config.panel.notification_metadata.action_count_one = oversized.clone();
+    config.panel.notification_metadata.action_count_many = oversized;
+
+    sanitize_config(&mut config);
+
+    for text in [
+        &config.panel.notification_metadata.critical_label,
+        &config.panel.notification_metadata.low_label,
+        &config.panel.notification_metadata.normal_label,
+        &config.panel.notification_metadata.relative_now,
+        &config.panel.notification_metadata.relative_minutes,
+        &config.panel.notification_metadata.relative_hours,
+        &config.panel.notification_metadata.relative_days,
+        &config.panel.notification_metadata.transient_label,
+        &config.panel.notification_metadata.live_label,
+        &config.panel.notification_metadata.history_label,
+        &config.panel.notification_metadata.action_count_one,
+        &config.panel.notification_metadata.action_count_many,
+    ] {
+        assert_eq!(text.chars().count(), 128);
+    }
+}
+
+#[test]
 fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
     let mut config = Config::default();
     config.panel.title = " ".to_string();
     config.panel.search_placeholder.clear();
+    config.panel.search_magnifier_icon = "x".repeat(256);
     config.panel.quick_actions_label.clear();
     config.panel.system_status_label.clear();
     config.panel.recent_notifications_label.clear();
@@ -223,6 +263,7 @@ fn sanitize_preserves_optional_panel_labels_and_repairs_widget_order() {
 
     assert_eq!(config.panel.title, PanelConfig::default().title);
     assert!(config.panel.search_placeholder.is_empty());
+    assert_eq!(config.panel.search_magnifier_icon.chars().count(), 128);
     assert!(config.panel.quick_actions_label.is_empty());
     assert!(config.panel.system_status_label.is_empty());
     assert!(config.panel.recent_notifications_label.is_empty());
@@ -289,6 +330,66 @@ fn sanitize_preserves_explicit_close_action_order() {
             PanelActionId::Clear,
         ]
     );
+}
+
+#[test]
+fn sanitize_dnd_menu_deduplicates_triggers_and_bounds_choices() {
+    let mut config = Config::default();
+    config.panel.dnd_menu_triggers = vec![
+        DndMenuTrigger::RightClick,
+        DndMenuTrigger::Keyboard,
+        DndMenuTrigger::RightClick,
+    ];
+    config.panel.dnd_menu_choices = vec![
+        DndMenuChoice::Duration {
+            label: String::new(),
+            minutes: 0,
+        },
+        DndMenuChoice::Duration {
+            label: "Year".to_string(),
+            minutes: u32::MAX,
+        },
+        DndMenuChoice::Tomorrow {
+            label: "Next day".to_string(),
+            hour: u8::MAX,
+            minute: u8::MAX,
+        },
+    ];
+
+    sanitize_config(&mut config);
+
+    assert_eq!(
+        config.panel.dnd_menu_triggers,
+        vec![DndMenuTrigger::RightClick, DndMenuTrigger::Keyboard]
+    );
+    assert_eq!(config.panel.dnd_menu_choices.len(), 2);
+    assert!(matches!(
+        config.panel.dnd_menu_choices[0],
+        DndMenuChoice::Duration {
+            minutes: 525_600,
+            ..
+        }
+    ));
+    assert!(matches!(
+        config.panel.dnd_menu_choices[1],
+        DndMenuChoice::Tomorrow {
+            hour: 23,
+            minute: 59,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn sanitize_preserves_an_explicitly_disabled_dnd_menu() {
+    let mut config = Config::default();
+    config.panel.dnd_menu_triggers.clear();
+    config.panel.dnd_menu_choices.clear();
+
+    sanitize_config(&mut config);
+
+    assert!(config.panel.dnd_menu_triggers.is_empty());
+    assert!(config.panel.dnd_menu_choices.is_empty());
 }
 
 #[test]
@@ -368,6 +469,36 @@ fn sanitize_keeps_active_limit_independent_from_history_retention() {
 }
 
 #[test]
+fn sanitize_clamps_popup_timeouts_to_the_supported_timer_domain() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = u64::MAX;
+    config.popups.critical_timeout_ms = Some(u64::MAX);
+
+    sanitize_config(&mut config);
+
+    assert_eq!(
+        config.popups.default_timeout_ms,
+        crate::MAX_POPUP_TIMEOUT_MS
+    );
+    assert_eq!(
+        config.popups.critical_timeout_ms,
+        Some(crate::MAX_POPUP_TIMEOUT_MS)
+    );
+}
+
+#[test]
+fn sanitize_preserves_zero_popup_timeout_as_indefinite() {
+    let mut config = Config::default();
+    config.popups.default_timeout_ms = 0;
+    config.popups.critical_timeout_ms = Some(0);
+
+    sanitize_config(&mut config);
+
+    assert_eq!(config.popups.default_timeout_ms, 0);
+    assert_eq!(config.popups.critical_timeout_ms, Some(0));
+}
+
+#[test]
 fn sanitize_clamps_margins_and_card_heights() {
     // Margin and min-height clamping should cover both stats and cards
     let mut config = Config::default();
@@ -423,7 +554,7 @@ fn widget_toggle_tooltips_parse_cleanly() {
         enabled = true
         label = "Custom Action"
         icon = "applications-system-symbolic"
-        toggle_cmd = "scripts/custom-action"
+        toggle_cmd = { mode = "direct", program = "scripts/custom-action" }
         "#,
     )
     .expect("config should parse");
@@ -435,7 +566,10 @@ fn widget_toggle_tooltips_parse_cleanly() {
     assert_eq!(config.widgets.stat_columns, 4);
     assert_eq!(config.widgets.card_columns, 1);
     assert_eq!(
-        config.widgets.toggles[0].toggle_cmd.as_deref(),
-        Some("scripts/custom-action")
+        config.widgets.toggles[0].toggle_cmd,
+        Some(CommandSpec::direct(
+            "scripts/custom-action",
+            [] as [&str; 0]
+        ))
     );
 }

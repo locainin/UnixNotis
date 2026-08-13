@@ -97,7 +97,10 @@ fn release_status_display_line_reports_available_update() {
         state: ReleaseUpdateState::UpdateAvailable,
     };
 
-    assert_eq!(status.display_line(), "v1.0.0 installed; v1.0.1 available");
+    assert_eq!(
+        status.display_line_for(&status.current, "installed"),
+        "v1.0.0 installed; v1.0.1 available"
+    );
 }
 
 #[test]
@@ -125,8 +128,34 @@ fn release_status_display_line_reports_up_to_date_release() {
     };
 
     assert_eq!(
-        status.display_line(),
+        status.display_line_for(&status.current, "installed"),
         "v1.0.0 installed; latest release is v1.0.0"
+    );
+}
+
+#[test]
+fn release_status_display_line_keeps_installation_role_explicit() {
+    let status = ReleaseStatus {
+        current: "v1.2.0".to_string(),
+        latest: Some("v1.2.0".to_string()),
+        state: ReleaseUpdateState::UpToDate,
+    };
+
+    assert_eq!(
+        status.display_line_for("v1.2.0", "binaries present"),
+        "v1.2.0 binaries present; latest release is v1.2.0"
+    );
+    assert_eq!(
+        status.display_line_for("v1.2.0", "installer"),
+        "v1.2.0 installer; latest release is v1.2.0"
+    );
+    assert_eq!(
+        status.update_state_for("v1.1.0"),
+        ReleaseUpdateState::UpdateAvailable
+    );
+    assert_eq!(
+        status.update_state_for("v1.2.0"),
+        ReleaseUpdateState::UpToDate
     );
 }
 

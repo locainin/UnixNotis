@@ -4,7 +4,6 @@ use std::sync::{mpsc, Arc};
 
 use crate::actions::{run_command_without_stdout, ActionContext};
 use crate::app::events::{UiMessage, WorkerEvent};
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 use crate::service_manager::ServiceManager;
@@ -14,17 +13,12 @@ fn env_sync_command_stdout_is_not_copied_into_logs() {
     // Command lookup reads PATH, so it must not race tests that replace process env
     let _lock = crate::test_support::env::test_env_lock();
     let (tx, rx) = mpsc::sync_channel::<UiMessage>(16);
-    let detection = Detection {
-        owner: None,
-        daemons: Vec::new(),
-    };
     let paths = InstallPaths {
         repo_root: std::env::temp_dir(),
         bin_dir: std::env::temp_dir().join("bin"),
         service: ServiceManager::systemd_user(std::env::temp_dir().join("systemd")),
     };
     let mut ctx = ActionContext {
-        detection: &detection,
         paths: &paths,
         install_state: None,
         log_tx: tx,

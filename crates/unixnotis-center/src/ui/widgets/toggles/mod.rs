@@ -3,6 +3,7 @@
 mod css;
 mod grid;
 mod icons;
+mod rfkill;
 mod state;
 
 pub use grid::ToggleGrid;

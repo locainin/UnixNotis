@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use glib::subclass::prelude::*;
 use gtk::glib;
 use gtk::glib::object::ObjectExt;
-use unixnotis_core::NotificationView;
+use unixnotis_core::{CutCorners, NotificationMetadataConfig, NotificationView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowKind {
@@ -15,14 +15,49 @@ pub enum RowKind {
     Notification,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RowPresentation {
     // Local receipt timestamp supports relative badges without changing D-Bus payloads
     pub received_at_ms: i64,
     // Optional lanes are disabled by default to preserve the compact stock card
     pub show_metadata: bool,
     pub show_thumbnail: bool,
+    pub show_avatar: bool,
+    // Runtime motion policy keeps recycled row revealers in sync with panel settings
+    pub reduced_motion: bool,
+    // Shared config avoids cloning every metadata string into every row snapshot
+    pub metadata: Rc<NotificationMetadataConfig>,
+    // Card clipping follows theme reloads through the same row refresh path
+    pub card_corners: CutCorners,
 }
+
+impl Default for RowPresentation {
+    fn default() -> Self {
+        Self {
+            received_at_ms: 0,
+            show_metadata: false,
+            show_thumbnail: false,
+            show_avatar: true,
+            reduced_motion: false,
+            metadata: Rc::new(NotificationMetadataConfig::default()),
+            card_corners: CutCorners::default(),
+        }
+    }
+}
+
+impl PartialEq for RowPresentation {
+    fn eq(&self, other: &Self) -> bool {
+        self.received_at_ms == other.received_at_ms
+            && self.show_metadata == other.show_metadata
+            && self.show_thumbnail == other.show_thumbnail
+            && self.show_avatar == other.show_avatar
+            && self.reduced_motion == other.reduced_motion
+            && Rc::ptr_eq(&self.metadata, &other.metadata)
+            && self.card_corners == other.card_corners
+    }
+}
+
+impl Eq for RowPresentation {}
 
 #[derive(Debug, Clone)]
 pub struct RowData {
@@ -31,9 +66,11 @@ pub struct RowData {
     pub group_key: Rc<str>,
     pub count: u32,
     pub expanded: bool,
-    // True when this notification is the visible card for a collapsed group
-    pub stacked: bool,
-    // Number of internal ghost cards shown under the visible notification card
+    // Every notification block has a separate application identity header
+    pub app_header_present: bool,
+    // True when this notification previews a collapsed multi-item group
+    pub collapsed_group_preview: bool,
+    // Rear silhouettes cap at two layers while the count keeps the exact total
     pub stack_depth: u8,
     pub is_active: bool,
     pub presentation: RowPresentation,
@@ -49,7 +86,8 @@ impl Default for RowData {
             group_key: Rc::from(""),
             count: 0,
             expanded: false,
-            stacked: false,
+            app_header_present: false,
+            collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
@@ -72,7 +110,8 @@ impl RowData {
             group_key,
             count: count as u32,
             expanded,
-            stacked: false,
+            app_header_present: false,
+            collapsed_group_preview: false,
             stack_depth: 0,
             is_active: false,
             presentation: RowPresentation::default(),
@@ -83,7 +122,7 @@ impl RowData {
     pub fn notification(
         group_key: Rc<str>,
         notification: Rc<NotificationView>,
-        stacked: bool,
+        collapsed_group_preview: bool,
         stack_depth: u8,
         expanded: bool,
         is_active: bool,
@@ -96,7 +135,8 @@ impl RowData {
             group_key,
             count: 0,
             expanded,
-            stacked,
+            app_header_present: true,
+            collapsed_group_preview,
             stack_depth,
             is_active,
             presentation,
@@ -111,7 +151,8 @@ impl RowData {
             && Rc::ptr_eq(&self.group_key, &other.group_key)
             && self.count == other.count
             && self.expanded == other.expanded
-            && self.stacked == other.stacked
+            && self.app_header_present == other.app_header_present
+            && self.collapsed_group_preview == other.collapsed_group_preview
             && self.stack_depth == other.stack_depth
             && self.is_active == other.is_active
             && self.presentation == other.presentation

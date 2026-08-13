@@ -14,5 +14,5 @@ pub(super) fn merge_css_with_overrides(contents: &str, fallback: &str, overrides
 }
 
 #[cfg(test)]
-#[path = "../tests/loader/merge.rs"]
+#[path = "tests/merge.rs"]
 mod tests;

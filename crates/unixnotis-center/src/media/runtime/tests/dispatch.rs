@@ -7,8 +7,7 @@ use super::super::state::MediaRuntimeState;
 use super::super::{MediaRefreshOrigin, MediaSignal};
 use super::support::receive_ui_event;
 use crate::control::UiEvent;
-use crate::media::mpris::build_player_state;
-use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
+use crate::media::mpris::tests::support::{build_player_state, MprisFixture, TEST_PLAYER_NAME};
 use crate::media::{MediaCommand, MediaInfo};
 use unixnotis_core::MediaConfig;
 
@@ -19,7 +18,9 @@ fn property_signal_preserves_player_and_refresh_origin() {
         origin: MediaRefreshOrigin::Fallback,
     };
 
-    let MediaSignal::PropertiesChanged { bus_name, origin } = signal;
+    let MediaSignal::PropertiesChanged { bus_name, origin } = signal else {
+        panic!("property test signal changed variant");
+    };
     assert_eq!(bus_name, "org.mpris.MediaPlayer2.test");
     assert_eq!(origin, MediaRefreshOrigin::Fallback);
 }
@@ -93,7 +94,7 @@ async fn runtime_command_dispatches_and_schedules_a_targeted_refresh() {
 
     assert_eq!(fixture.next_calls(), 1);
     assert!(state.delayed_refreshes.contains_key(TEST_PLAYER_NAME));
-    for (_, task) in state.delayed_refreshes {
+    for task in state.delayed_refreshes.values_mut() {
         task.abort();
     }
 }
@@ -116,10 +117,8 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
         &mut state,
         &signal_tx,
         &event_tx,
-        MediaSignal::PropertiesChanged {
-            bus_name: TEST_PLAYER_NAME.to_string(),
-            origin: MediaRefreshOrigin::Bus,
-        },
+        TEST_PLAYER_NAME.to_string(),
+        MediaRefreshOrigin::Bus,
     )
     .await;
 
@@ -135,6 +134,7 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
                     identity: "UnixNotis Test Player".to_string(),
                     browser_family: None,
                     owner_pid: Some(std::process::id()),
+                    source_pid_hint: None,
                     title: String::new(),
                     artist: String::new(),
                     playback_status: "Playing".to_string(),
@@ -146,7 +146,7 @@ async fn runtime_signal_refreshes_cache_publishes_and_schedules_fallback() {
                 }]
     ));
     let _ = cancel_tx.send(true);
-    for (_, task) in state.delayed_refreshes {
+    for task in state.delayed_refreshes.values_mut() {
         task.abort();
     }
 }

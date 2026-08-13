@@ -1,20 +1,26 @@
 //! Shared UI event and command types for the center D-Bus runtime.
 
-use unixnotis_core::{CloseReason, ControlState, Margins, NotificationView, PanelRequest};
+use std::fmt;
+
+use unixnotis_core::{
+    CloseReason, ControlState, Margins, NotificationKey, NotificationView, PanelRequest,
+};
 
 use crate::media::MediaInfo;
 
 /// Events delivered to the GTK main loop.
 #[derive(Debug, Clone)]
 pub enum UiEvent {
+    // Owner loss clears snapshots that belong to the previous daemon generation
+    Disconnected,
     Seed {
         state: ControlState,
         active: Vec<NotificationView>,
         history: Vec<NotificationView>,
     },
-    NotificationAdded(NotificationView, bool),
-    NotificationUpdated(NotificationView, bool),
-    NotificationClosed(u32, CloseReason),
+    NotificationAdded(NotificationView),
+    NotificationUpdated(NotificationView),
+    NotificationClosed(NotificationKey, CloseReason),
     StateChanged(ControlState),
     PanelRequested(PanelRequest),
     GroupToggled(String),
@@ -35,13 +41,58 @@ pub enum UiEvent {
 }
 
 /// Commands sent from GTK handlers to the D-Bus runtime.
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
-    Dismiss(u32),
-    InvokeAction { id: u32, action_key: String },
+    Dismiss(NotificationKey),
+    InvokeAction {
+        notification: NotificationKey,
+        action_key: String,
+        confirmed: bool,
+    },
+    Reply {
+        id: u32,
+        generation: u64,
+        text: String,
+        outcome: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     ClearAll,
     SetDnd(bool),
+    SetDndUntil(i64),
     ClosePanel,
+}
+
+impl fmt::Debug for UiCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dismiss(notification) => formatter
+                .debug_tuple("Dismiss")
+                .field(notification)
+                .finish(),
+            Self::InvokeAction {
+                notification,
+                action_key,
+                confirmed,
+            } => formatter
+                .debug_struct("InvokeAction")
+                .field("notification", notification)
+                .field("action_key", action_key)
+                .field("confirmed", confirmed)
+                .finish(),
+            Self::Reply { id, generation, .. } => formatter
+                .debug_struct("Reply")
+                .field("id", id)
+                .field("generation", generation)
+                // Typed message content must never enter diagnostic logs
+                .field("text", &"[redacted]")
+                .finish_non_exhaustive(),
+            Self::ClearAll => formatter.write_str("ClearAll"),
+            Self::SetDnd(enabled) => formatter.debug_tuple("SetDnd").field(enabled).finish(),
+            Self::SetDndUntil(expires_at) => formatter
+                .debug_tuple("SetDndUntil")
+                .field(expires_at)
+                .finish(),
+            Self::ClosePanel => formatter.write_str("ClosePanel"),
+        }
+    }
 }
 
 #[cfg(test)]

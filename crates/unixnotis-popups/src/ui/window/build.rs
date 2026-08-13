@@ -8,6 +8,7 @@ use unixnotis_core::Config;
 use super::anchor::apply_anchor;
 use super::input_region::{refresh_popup_input_region, PopupInputRegionState};
 use super::monitor::{default_monitor, find_monitor};
+use super::width_constraint::PopupWidthConstraint;
 
 // Keep popup width proportional on compact displays to avoid oversized cards.
 const POPUP_WIDTH_MONITOR_RATIO_CAP: f32 = 0.28;
@@ -21,7 +22,8 @@ pub(in crate::ui) fn build_popup_window(
     // Window lifecycle hooks are centralized here to keep popup setup deterministic
     let window = gtk::ApplicationWindow::new(app);
     window.set_decorated(false);
-    window.set_resizable(false);
+    // Layer-shell has no user resize chrome, but GTK must accept content-driven height changes
+    window.set_resizable(true);
     window.set_title(Some("UnixNotis Popups"));
     window.add_css_class("unixnotis-popup-window");
 
@@ -33,8 +35,14 @@ pub(in crate::ui) fn build_popup_window(
     // Stack owns popup layout and reveal order for visible entries
     let stack = gtk::Box::new(gtk::Orientation::Vertical, config.popups.spacing);
     stack.add_css_class("unixnotis-popup-stack");
-    window.set_child(Some(&stack));
+    let width_constraint = PopupWidthConstraint::new(&stack, config.popups.width);
+    window.set_child(Some(&width_constraint));
     window.set_visible(false);
+
+    window.connect_default_width_notify(move |window| {
+        // Config and monitor changes update the height-for-width measurement hint
+        width_constraint.set_width_hint(window.default_width());
+    });
 
     // Shared input-region state is reused by config reloads and runtime visibility updates
     let input_region = PopupInputRegionState::new(config.popups.allow_click_through);
@@ -132,13 +140,12 @@ pub(in crate::ui) fn apply_popup_config(
     }
     // Width follows config but is capped by monitor geometry on smaller displays.
     let popup_width = resolve_popup_width(config, monitor.as_ref());
-    // Width is fixed by config while height remains content-driven
-    window.set_default_size(popup_width, 1);
+    // A negative height asks GTK to use the stack's natural height
+    window.set_default_size(popup_width, -1);
     window.set_size_request(popup_width, -1);
-    // Stack width follows popup width exactly so children cannot request wider geometry.
-    // This keeps popup geometry pinned to config even with hostile payload text
-    stack.set_size_request(popup_width, -1);
-    stack.set_hexpand(false);
+    // The window and width constraint own horizontal geometry
+    stack.set_size_request(-1, -1);
+    stack.set_hexpand(true);
     stack.set_spacing(config.popups.spacing);
 
     apply_anchor(window, config.popups.anchor, config.popups.margin);

@@ -71,8 +71,6 @@ fn s6_backend_commands_match_expected_behavior() {
         PathBuf::from("/run/user/s6-rc"),
     );
 
-    // Readiness checks own tool validation because availability needs several s6 programs
-    assert!(manager.availability_command().is_none());
     assert!(manager.is_enabled_command().is_none());
     // Database refresh compiles the user source tree before s6-rc can change the live service
     let Some(ServiceArtifactRefresh::S6Database(refresh)) = manager.refresh_after_artifact_change()
@@ -94,7 +92,7 @@ fn s6_backend_commands_match_expected_behavior() {
         &["-l", "/run/user/s6-rc", "/tmp/s6-data/rc/compiled-next"]
     );
     assert_eq!(
-        manager.start_command().expect("s6 start command").args(),
+        manager.start_command().args(),
         &[
             "-l",
             "/run/user/s6-rc",
@@ -104,10 +102,7 @@ fn s6_backend_commands_match_expected_behavior() {
         ]
     );
     assert_eq!(
-        manager
-            .disable_now_command()
-            .expect("s6 stop command")
-            .args(),
+        manager.disable_now_command().args(),
         &[
             "-l",
             "/run/user/s6-rc",
@@ -124,11 +119,27 @@ fn s6_backend_active_probe_parses_s6_svstat_output() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let active = manager.active_probe().expect("s6 active probe");
+    let active = manager.active_probe();
 
     // s6-svstat -o up prints a boolean, so parsing stays exact and cheap
-    assert_eq!(active.parser_matches("true\n"), Some(true));
-    assert_eq!(active.parser_matches("false\n"), Some(false));
+    assert_eq!(
+        active.parser_state(true, "true\n"),
+        crate::service_manager::contract::ServiceProbeState::Active
+    );
+    assert_eq!(
+        active.parser_state(true, "false\n"),
+        crate::service_manager::contract::ServiceProbeState::Inactive
+    );
+    assert_eq!(
+        active.parser_state_with_result(Some(1), "", ""),
+        crate::service_manager::contract::ServiceProbeState::Absent
+    );
+    for failure_code in [100, 111] {
+        assert_eq!(
+            active.parser_state_with_result(Some(failure_code), "", "system error\n"),
+            crate::service_manager::contract::ServiceProbeState::Indeterminate
+        );
+    }
 }
 
 #[test]
@@ -194,21 +205,12 @@ fn s6_backend_hyprland_startup_lines_update_envdir_and_start_service() {
 
     let commands = manager.hyprland_startup_commands(&vars);
 
-    // Hyprland receives one shell line because it does not manage multi-step service hooks
     assert_eq!(commands.len(), 1);
-    assert!(commands[0].starts_with("sh -lc "));
-    assert!(commands[0].contains("[ ! -L \"$envdir\" ] || exit 1"));
-    assert!(commands[0].contains("mkdir -p \"$envdir\" || exit 1"));
-    assert!(commands[0].contains("mktemp \"$envdir/.WAYLAND_DISPLAY.XXXXXX\""));
-    assert!(!commands[0].contains(".PATH.XXXXXX"));
-    assert!(!commands[0].contains("s6-db-reload"));
-    assert!(!commands[0].contains("s6-rc-compile"));
-    assert!(commands[0].contains("s6-rc -l "));
-    assert!(commands[0].contains("/run/user/s6 rc"));
-    assert!(commands[0].contains("-u change"));
-    assert!(commands[0].contains("unixnotis-daemon"));
-    assert!(commands[0].contains("s6-svc -r "));
-    assert!(commands[0].contains("/run/user/s6 rc/servicedirs/unixnotis-daemon"));
+    assert_eq!(
+        commands[0],
+        "noticenterctl sync-session-environment --service-manager s6"
+    );
+    assert!(!commands[0].contains("sh -lc"));
 }
 
 #[test]
@@ -308,7 +310,7 @@ fn s6_readiness_rejects_tools_that_exist_only_on_path() {
         "s6-envdir",
         "s6-svstat",
     ] {
-        write_executable(path_bin.join(tool), "#!/bin/sh\nexit 0\n");
+        write_executable(&path_bin.join(tool), "#!/bin/sh\nexit 0\n");
     }
     let _path = EnvPathGuard::prepend(&path_bin);
     let _tools = use_fake_tool_bin(&trusted_bin);
@@ -399,12 +401,21 @@ fn s6_active_probe_rejects_truthy_but_non_exact_output() {
         PathBuf::from("/tmp/s6-data"),
         PathBuf::from("/run/user/s6-rc"),
     );
-    let active = manager.active_probe().expect("s6 active probe");
+    let active = manager.active_probe();
 
     // s6-svstat -o up emits exact true/false, so loose text must not count as active
-    assert_eq!(active.parser_matches(" true\n"), Some(true));
-    assert_eq!(active.parser_matches("true enough\n"), Some(false));
-    assert_eq!(active.parser_matches("1\n"), Some(false));
+    assert_eq!(
+        active.parser_state(true, " true\n"),
+        crate::service_manager::contract::ServiceProbeState::Active
+    );
+    assert_eq!(
+        active.parser_state(true, "true enough\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
+    );
+    assert_eq!(
+        active.parser_state(true, "1\n"),
+        crate::service_manager::contract::ServiceProbeState::Indeterminate
+    );
 }
 
 fn test_root(name: &str) -> PathBuf {
@@ -413,8 +424,8 @@ fn test_root(name: &str) -> PathBuf {
     root
 }
 
-fn write_executable(path: PathBuf, contents: &str) {
-    write_test_executable(&path, contents);
+fn write_executable(path: &Path, contents: &str) {
+    write_test_executable(path, contents);
 }
 
 struct EnvPathGuard {

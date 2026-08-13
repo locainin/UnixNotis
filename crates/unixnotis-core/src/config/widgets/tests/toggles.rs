@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{ToggleLayout, ToggleWidgetConfig, WidgetsConfig};
+use crate::{CommandSpec, ToggleLayout, ToggleWidgetConfig, WidgetsConfig};
 
 #[test]
 fn default_toggles_have_unique_stable_kinds() {
@@ -26,16 +26,25 @@ fn default_night_toggle_uses_shipped_relative_scripts() {
 
     // The commands stay config-owned while core startup guarantees the files exist
     assert_eq!(
-        night.state_cmd.as_deref(),
-        Some("scripts/unixnotis-blue-light-state")
+        night.state_cmd,
+        Some(CommandSpec::direct(
+            "scripts/unixnotis-blue-light-state",
+            [] as [&str; 0]
+        ))
     );
     assert_eq!(
-        night.on_cmd.as_deref(),
-        Some("scripts/unixnotis-blue-light-on")
+        night.on_cmd,
+        Some(CommandSpec::direct(
+            "scripts/unixnotis-blue-light-on",
+            [] as [&str; 0]
+        ))
     );
     assert_eq!(
-        night.off_cmd.as_deref(),
-        Some("scripts/unixnotis-blue-light-off")
+        night.off_cmd,
+        Some(CommandSpec::direct(
+            "scripts/unixnotis-blue-light-off",
+            [] as [&str; 0]
+        ))
     );
     assert_eq!(night.toggle_cmd, None);
     assert_eq!(night.watch_cmd, None);
@@ -47,18 +56,20 @@ fn default_toggles_keep_commands_config_owned() {
 
     for toggle in widgets.toggles {
         for command in [
-            toggle.state_cmd.as_deref(),
-            toggle.toggle_cmd.as_deref(),
-            toggle.on_cmd.as_deref(),
-            toggle.off_cmd.as_deref(),
-            toggle.watch_cmd.as_deref(),
+            toggle.state_cmd.as_ref(),
+            toggle.toggle_cmd.as_ref(),
+            toggle.on_cmd.as_ref(),
+            toggle.off_cmd.as_ref(),
+            toggle.watch_cmd.as_ref(),
         ]
         .into_iter()
         .flatten()
         {
             // Stock commands should stay relative or PATH based so config files remain portable
             assert!(
-                !command.starts_with('/'),
+                command
+                    .program()
+                    .is_none_or(|program| !program.is_absolute()),
                 "absolute command leaked: {command}"
             );
         }
@@ -75,11 +86,11 @@ fn custom_toggles_round_trip_arbitrary_user_commands() {
         label = "Build"
         icon = "applications-development-symbolic"
         icon_asset = "assets/build.svg"
-        state_cmd = "scripts/build-state"
-        toggle_cmd = "sh -c 'make test && notify-send done'"
-        on_cmd = "scripts/build-on"
-        off_cmd = "scripts/build-off"
-        watch_cmd = "scripts/build-watch"
+        state_cmd = { mode = "direct", program = "scripts/build-state" }
+        toggle_cmd = { mode = "shell", script = "make test && notify-send done" }
+        on_cmd = { mode = "direct", program = "scripts/build-on" }
+        off_cmd = { mode = "direct", program = "scripts/build-off" }
+        watch_cmd = { mode = "direct", program = "scripts/build-watch" }
         "#,
     )
     .expect("widgets config should parse");
@@ -88,14 +99,26 @@ fn custom_toggles_round_trip_arbitrary_user_commands() {
     assert_eq!(toggle.kind.as_deref(), Some("build"));
     assert_eq!(toggle.label, "Build");
     assert_eq!(toggle.icon_asset.as_deref(), Some("assets/build.svg"));
-    assert_eq!(toggle.state_cmd.as_deref(), Some("scripts/build-state"));
     assert_eq!(
-        toggle.toggle_cmd.as_deref(),
-        Some("sh -c 'make test && notify-send done'")
+        toggle.state_cmd,
+        Some(CommandSpec::direct("scripts/build-state", [] as [&str; 0]))
     );
-    assert_eq!(toggle.on_cmd.as_deref(), Some("scripts/build-on"));
-    assert_eq!(toggle.off_cmd.as_deref(), Some("scripts/build-off"));
-    assert_eq!(toggle.watch_cmd.as_deref(), Some("scripts/build-watch"));
+    assert_eq!(
+        toggle.toggle_cmd,
+        Some(CommandSpec::shell("make test && notify-send done"))
+    );
+    assert_eq!(
+        toggle.on_cmd,
+        Some(CommandSpec::direct("scripts/build-on", [] as [&str; 0]))
+    );
+    assert_eq!(
+        toggle.off_cmd,
+        Some(CommandSpec::direct("scripts/build-off", [] as [&str; 0]))
+    );
+    assert_eq!(
+        toggle.watch_cmd,
+        Some(CommandSpec::direct("scripts/build-watch", [] as [&str; 0]))
+    );
 }
 
 #[test]

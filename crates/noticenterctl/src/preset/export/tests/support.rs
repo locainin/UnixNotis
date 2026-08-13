@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::test_support::fixture_file_contents;
+
 static TEST_TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub(in crate::preset::export) struct TempDirGuard {
@@ -29,7 +31,11 @@ impl TempDirGuard {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
-        fs::write(path, contents).expect("write file");
+        fs::write(
+            path,
+            fixture_file_contents(relative_path, contents).as_bytes(),
+        )
+        .expect("write file");
     }
 }
 

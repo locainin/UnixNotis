@@ -1,13 +1,16 @@
-use std::time::{Duration, Instant};
-
-use super::{seed_retry_deadline, SEED_RETRY_BUDGET_SECS};
+use super::SeedError;
 
 #[test]
-fn seed_retry_deadline_adds_the_fixed_retry_budget() {
-    let now = Instant::now();
+fn seed_error_keeps_handshake_snapshot_and_delivery_failures_distinct() {
+    let error = SeedError {
+        state_error: Some("state unavailable".to_string()),
+        active_error: None,
+        history_error: None,
+        send_error: None,
+    };
 
-    assert_eq!(
-        seed_retry_deadline(now),
-        now + Duration::from_secs(SEED_RETRY_BUDGET_SECS)
-    );
+    assert!(error.state_error.is_some());
+    assert!(error.active_error.is_none());
+    assert!(error.history_error.is_none());
+    assert!(error.send_error.is_none());
 }

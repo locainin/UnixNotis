@@ -1,26 +1,31 @@
 use std::collections::HashMap;
-use std::time::Instant;
-
-use tracing::debug;
-use unixnotis_core::{CloseReason, Notification, CONTROL_OBJECT_PATH};
+use std::sync::Arc;
+use tracing::{debug, warn};
+use unixnotis_core::{ImageData, Notification, NotificationKey};
 use zbus::message::Header;
 use zbus::zvariant::OwnedValue;
-use zbus::SignalContext;
 
-use crate::daemon::notifications::payload::{
-    build_notification, resolve_expiration, NotificationInput,
+use crate::daemon::notifications::identity::{
+    resolve_attribution_owned, resolve_attribution_with_deadline, SenderMetadata,
 };
-use crate::daemon::notifications::sender::{app_name_matches_sender, resolve_sender_metadata};
-use crate::daemon::{
-    to_fdo_error, ControlServer, NotificationSignalMode, NOTIFICATIONS_OBJECT_PATH,
+use crate::daemon::notifications::identity::{
+    resolve_sender_metadata, SenderMetadataStatus, SENDER_CREDENTIAL_TIMEOUT,
 };
-use crate::store::InsertOutcome;
+use crate::daemon::notifications::ingress::payload::{
+    build_notification, materialize_sender_visual, may_materialize_content_image, owned_to_string,
+    sender_visual_role, wire_image_role, NotificationInput, SenderVisualRole, WireImageRole,
+    CONVERSATION_AVATAR_TIMEOUT, MAX_STORED_AVATAR_DIMENSION, MAX_STORED_CONTENT_DIMENSION,
+};
+use crate::daemon::{to_fdo_error, NotificationSignalMode};
+use crate::store::{CommitDisposition, InsertOutcome, SuppressedNotification};
 
+use super::avatar::run_avatar_worker;
+use super::reply_lifecycle::NotifyCompletion;
+use super::wire_hints::WireHints;
 use super::NotificationServer;
 
 struct StoredNotification {
     outcome: InsertOutcome,
-    expiration: Option<Instant>,
 }
 
 struct WireNotification {
@@ -30,6 +35,8 @@ struct WireNotification {
     body: String,
     actions: Vec<String>,
     hints: HashMap<String, OwnedValue>,
+    wire_image_data: Option<super::wire_hints::WireImageData>,
+    image_path: Option<String>,
     expire_timeout: i32,
 }
 
@@ -38,7 +45,7 @@ impl NotificationServer {
         clippy::too_many_arguments,
         reason = "the freedesktop notification method defines this wire-level argument list"
     )]
-    pub(super) async fn ingest_notify(
+    pub(super) async fn ingest_notify_deferred(
         &self,
         app_name: String,
         replaces_id: u32,
@@ -46,10 +53,10 @@ impl NotificationServer {
         summary: String,
         body: String,
         actions: Vec<String>,
-        hints: HashMap<String, OwnedValue>,
-        header: &Header<'_>,
+        hints: WireHints,
+        sender: SenderMetadata,
         expire_timeout: i32,
-    ) -> zbus::fdo::Result<u32> {
+    ) -> zbus::fdo::Result<NotifyCompletion> {
         let _ = Self::log_received_notification(
             &app_name,
             &summary,
@@ -57,6 +64,7 @@ impl NotificationServer {
             replaces_id,
             expire_timeout,
         );
+        let (hints, wire_image_data, image_path) = hints.into_parts();
         let notification = self
             .notification_from_wire(
                 WireNotification {
@@ -66,14 +74,15 @@ impl NotificationServer {
                     body,
                     actions,
                     hints,
+                    wire_image_data,
+                    image_path,
                     expire_timeout,
                 },
-                header,
+                sender,
             )
             .await;
         let stored = self.store_notification(notification, replaces_id).await;
-        self.finish_notification_change(stored.outcome, stored.expiration)
-            .await
+        self.finish_notification_change(stored.outcome).await
     }
 
     fn log_received_notification(
@@ -104,21 +113,100 @@ impl NotificationServer {
         true
     }
 
+    pub(super) async fn resolve_sender(&self, header: &Header<'_>) -> SenderMetadata {
+        // Sender metadata helps with ownership checks and diagnostics
+        if let Ok(sender) = tokio::time::timeout(
+            SENDER_CREDENTIAL_TIMEOUT,
+            resolve_sender_metadata(
+                &self.state.sender_metadata_cache,
+                self.state.connection(),
+                header,
+            ),
+        )
+        .await
+        {
+            sender
+        } else {
+            warn!("notification sender credentials timed out and failed closed");
+            timed_out_sender_metadata()
+        }
+    }
+
     async fn notification_from_wire(
         &self,
         input: WireNotification,
-        header: &Header<'_>,
+        sender: SenderMetadata,
     ) -> Notification {
-        // Sender metadata helps with ownership checks and diagnostics
-        let sender = resolve_sender_metadata(self.state.connection(), header).await;
-        if sender_app_name_mismatch(&input.app_name, sender.sender_executable.as_deref()) {
+        let desktop_entry = input.hints.get("desktop-entry").and_then(owned_to_string);
+        let desktop_identity_index = self.state.desktop_identity_index.load_full();
+        // This is the only attribution deadline, including package enrichment
+        let resolution = resolve_attribution_with_deadline(
+            input.app_name.clone(),
+            desktop_entry.clone(),
+            &sender,
+            resolve_attribution_owned(
+                input.app_name.clone(),
+                desktop_entry.clone(),
+                sender.clone(),
+                std::sync::Arc::clone(&desktop_identity_index),
+            ),
+        )
+        .await;
+        let wire_image_role = wire_image_role(
+            &resolution.attribution,
+            &desktop_identity_index,
+            &input.hints,
+            &input.actions,
+        );
+        let sender_visual_role = sender_visual_role(
+            &resolution.attribution,
+            &desktop_identity_index,
+            &input.hints,
+            &input.actions,
+            &input.app_icon,
+        );
+        let sender_visual = materialize_sender_visual_for_role(
+            sender_visual_role,
+            &resolution.attribution,
+            input.app_icon.clone(),
+        )
+        .await;
+        let materialized_content =
+            materialize_content_visual(&resolution.attribution, input.image_path.as_deref()).await;
+        let (image_data, wire_sender_visual) = normalize_wire_image_for_role(
+            wire_image_role,
+            input.wire_image_data,
+            materialized_content,
+        );
+        let stored_sender_visual_role = if wire_sender_visual.is_some() {
+            SenderVisualRole::ConversationAvatar
+        } else {
+            sender_visual_role
+        };
+        if matches!(
+            resolution.attribution.status,
+            unixnotis_core::AttributionStatus::Conflict
+        ) {
             debug!(
                 app_name = %input.app_name,
                 sender = sender.sender_name.as_deref().unwrap_or("unknown"),
                 sender_executable = sender.sender_executable.as_deref().unwrap_or("unknown"),
-                "notification app_name does not match sender executable"
+                detail = %resolution.attribution.diagnostic_detail,
+                "notification application claim conflicts with sender evidence"
             );
         }
+        debug!(
+            claim = %resolution.diagnostics.claimed_name,
+            desktop_entry = %resolution.diagnostics.claimed_desktop_entry,
+            sender_executable = %resolution.diagnostics.sender_executable,
+            matched_desktop_id = %resolution.diagnostics.matched_desktop_id,
+            record_origin = ?resolution.diagnostics.record_trust,
+            launch_authority = ?resolution.diagnostics.launch_authority,
+            cmdline_quality = ?resolution.diagnostics.command_line_quality,
+            verification = ?resolution.diagnostics.verification,
+            reason = %resolution.diagnostics.reason,
+            "notification attribution decided"
+        );
 
         // Build a safe notification record from untrusted wire data
         build_notification(NotificationInput {
@@ -128,7 +216,14 @@ impl NotificationServer {
             body: input.body,
             actions: input.actions,
             hints: input.hints,
+            image_data,
+            sender_visual_data: wire_sender_visual,
+            sender_visual,
+            sender_visual_role: stored_sender_visual_role,
             sender,
+            attribution: resolution.attribution,
+            attribution_diagnostics: resolution.diagnostics,
+            inline_reply_policy: resolution.inline_reply_policy,
             expire_timeout: input.expire_timeout,
         })
     }
@@ -138,141 +233,207 @@ impl NotificationServer {
         notification: Notification,
         replaces_id: u32,
     ) -> StoredNotification {
-        // Store mutation and expiration scheduling happen under one lock scope
-        let (outcome, expiration) = {
-            let mut store = self.state.store.lock().await;
-            let outcome = store.insert(notification, replaces_id);
-            let expiration = if outcome.dropped {
-                None
-            } else {
-                // Resolve timeout after insertion so rule-mapped fields are already final
-                let expiration = resolve_expiration(store.config(), &outcome.notification);
-                store.set_expiration(outcome.notification.id, expiration);
-                expiration
-            };
-            (outcome, expiration)
-        };
-        StoredNotification {
-            outcome,
-            expiration,
-        }
+        // Shared state owns generation serialization for every current and future caller
+        let outcome = self
+            .state
+            .commit_notification_generation(notification, replaces_id, &self.scheduler)
+            .await;
+        StoredNotification { outcome }
     }
 
-    fn handle_dropped_notification(outcome: &InsertOutcome) -> Option<u32> {
-        if !outcome.dropped {
-            return None;
-        }
+    fn suppressed_notification(outcome: &InsertOutcome) -> Option<SuppressedNotification> {
+        let suppressed = outcome.suppressed()?;
         debug!(
-            id = outcome.notification.id,
-            app = %outcome.notification.app_name,
-            "notification dropped due to active inhibitor"
+            id = suppressed.id,
+            generation = suppressed.generation,
+            owner_pid = suppressed.owner.map(|owner| owner.pid),
+            "notification content dropped due to active inhibitor"
         );
-        Some(outcome.notification.id)
+        Some(suppressed)
     }
 
-    fn schedule_and_play(&self, outcome: &InsertOutcome, expiration: Option<Instant>) {
-        self.scheduler.schedule(outcome.notification.id, expiration);
+    fn play_sound(&self, notification: &Notification, allow_sound: bool) -> bool {
         // Sound is best-effort and decided by rules and per-notification hints
         self.state
             .sound
-            .play_from_hints(&outcome.notification.hints, outcome.allow_sound);
+            .play_from_hints(&notification.hints, allow_sound)
     }
 
-    async fn emit_notification_change(&self, outcome: &InsertOutcome) -> zbus::fdo::Result<()> {
-        let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        match self
+    async fn emit_notification_change(
+        &self,
+        notification: &Notification,
+        replaced: bool,
+    ) -> zbus::fdo::Result<()> {
+        let mode = self
             .state
-            .notification_signal_mode(outcome.notification.sender_name.as_deref())
-        {
-            NotificationSignalMode::Direct => {
-                if outcome.replaced {
-                    // Only the id crosses the broadcast signal
-                    // Trusted UIs fetch the live payload through the authorized control API
-                    ControlServer::notification_updated(
-                        &control_ctx,
-                        outcome.notification.id,
-                        outcome.show_popup,
-                    )
-                    .await
-                    .map_err(to_fdo_error)?;
-                } else {
-                    // New notification broadcasts only the id for the same confidentiality reason
-                    ControlServer::notification_added(
-                        &control_ctx,
-                        outcome.notification.id,
-                        outcome.show_popup,
-                    )
-                    .await
-                    .map_err(to_fdo_error)?;
-                }
-            }
-            NotificationSignalMode::SnapshotOnly => {
-                debug!(
-                    id = outcome.notification.id,
-                    sender = outcome.notification.sender_name.as_deref().unwrap_or("unknown"),
-                    "notification burst detected; using snapshot invalidation instead of per-row signal"
-                );
-                self.state
-                    .emit_snapshot_invalidated()
-                    .await
-                    .map_err(to_fdo_error)?;
-            }
-            NotificationSignalMode::Suppress => {}
+            .notification_signal_mode(notification.sender_name.as_deref());
+        if mode == NotificationSignalMode::SnapshotOnly {
+            debug!(
+                id = notification.id,
+                sender = notification.sender_name.as_deref().unwrap_or("unknown"),
+                "notification burst detected; using snapshot invalidation instead of per-row signal"
+            );
         }
-        Ok(())
+        self.state
+            .publish_notification_change(mode, notification.key(), replaced)
+            .await
+            .map_err(to_fdo_error)
     }
 
     async fn finish_notification_change(
         &self,
         outcome: InsertOutcome,
-        expiration: Option<Instant>,
-    ) -> zbus::fdo::Result<u32> {
-        if let Some(id) = Self::handle_dropped_notification(&outcome) {
-            return Ok(id);
+    ) -> zbus::fdo::Result<NotifyCompletion> {
+        let notification = match &outcome.disposition {
+            CommitDisposition::Active(notification) => Arc::clone(notification),
+            CommitDisposition::SuppressedDropAll(suppressed) => {
+                let suppressed = *suppressed;
+                let _ = Self::suppressed_notification(&outcome);
+                return Ok(NotifyCompletion {
+                    id: suppressed.id,
+                    suppressed: Some(suppressed),
+                });
+            }
+        };
+        let _sound_accepted = self.play_sound(&notification, outcome.allow_sound);
+        debug!(
+            id = notification.id,
+            decision = ?outcome.popup_admission,
+            "notification popup admission decided"
+        );
+        if outcome.popup_admission.should_show() && self.state.should_warn_popups_unready() {
+            warn!(
+                id = notification.id,
+                "popup admitted while popup renderer is not ready"
+            );
+        }
+        let id = notification.id;
+        let key = notification.key();
+        if let Err(error) = self
+            .emit_notification_change(&notification, outcome.replaced)
+            .await
+        {
+            warn!(?error, id, "notification committed but live fanout failed");
+            self.state
+                .store
+                .lock()
+                .await
+                .record_popup_delivery_stage(key, unixnotis_core::PopupDeliveryStage::FanoutFailed);
+            // Snapshot invalidation gives connected clients one best-effort recovery route
+            let _ = self.state.publish_snapshot_invalidated().await;
+        }
+        // Evicted items are announced so UIs can remove stale rows
+        if let Err(error) = self.handle_evicted(outcome.evicted).await {
+            warn!(
+                ?error,
+                id, "notification committed but eviction fanout failed"
+            );
+        }
+        if let Err(error) = self.state.publish_state_changed().await {
+            warn!(?error, id, "notification committed but state fanout failed");
         }
 
-        self.schedule_and_play(&outcome, expiration);
-        self.emit_notification_change(&outcome).await?;
-        // Evicted items are announced so UIs can remove stale rows
-        self.handle_evicted(outcome.evicted).await?;
-        self.state
-            .emit_state_changed()
-            .await
-            .map_err(to_fdo_error)?;
-
-        Ok(outcome.notification.id)
+        Ok(NotifyCompletion {
+            id,
+            suppressed: None,
+        })
     }
 
-    async fn handle_evicted(&self, evicted: Vec<u32>) -> zbus::fdo::Result<()> {
+    pub(super) async fn publish_suppressed_close(&self, suppressed: SuppressedNotification) {
+        let key = NotificationKey {
+            id: suppressed.id,
+            generation: suppressed.generation,
+        };
+        if let Err(error) = self
+            .state
+            .publish_notification_closed(key, unixnotis_core::CloseReason::Undefined)
+            .await
+        {
+            warn!(
+                ?error,
+                id = suppressed.id,
+                generation = suppressed.generation,
+                "suppressed notification close fanout failed"
+            );
+        }
+    }
+
+    async fn handle_evicted(&self, evicted: Vec<NotificationKey>) -> zbus::fdo::Result<()> {
         if evicted.is_empty() {
             // Fast path avoids context allocation when no eviction happened
             return Ok(());
         }
-        self.state.cancel_expirations(&evicted);
-
-        let notif_ctx = SignalContext::new(self.state.connection(), NOTIFICATIONS_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-        let control_ctx = SignalContext::new(self.state.connection(), CONTROL_OBJECT_PATH)
-            .map_err(to_fdo_error)?;
-
-        for id in evicted {
-            // Emit both freedesktop and control close signals for consistent subscribers
-            Self::notification_closed(&notif_ctx, id, CloseReason::Undefined as u32)
-                .await
-                .map_err(to_fdo_error)?;
-            ControlServer::notification_closed(&control_ctx, id, CloseReason::Undefined)
-                .await
-                .map_err(to_fdo_error)?;
-        }
-        Ok(())
+        self.state
+            .publish_evicted_notifications(&evicted)
+            .await
+            .map_err(to_fdo_error)
     }
 }
 
-fn sender_app_name_mismatch(app_name: &str, sender_executable: Option<&str>) -> bool {
-    sender_executable.is_some_and(|exe| !app_name_matches_sender(app_name, exe))
+fn normalize_wire_image_for_role(
+    role: WireImageRole,
+    wire_image_data: Option<super::wire_hints::WireImageData>,
+    materialized_content: Option<ImageData>,
+) -> (Option<ImageData>, Option<ImageData>) {
+    match role {
+        WireImageRole::ConversationAvatar => {
+            // Communication artwork becomes a small sender visual before model storage
+            let sender_visual = wire_image_data
+                .and_then(|image| image.into_storage_image(MAX_STORED_AVATAR_DIMENSION));
+            (materialized_content, sender_visual)
+        }
+        // Non-communication artwork uses the larger content-image storage bound
+        WireImageRole::ContentImage => {
+            let content_image = wire_image_data
+                .and_then(|image| image.into_storage_image(MAX_STORED_CONTENT_DIMENSION))
+                .or(materialized_content);
+            (content_image, None)
+        }
+    }
+}
+
+async fn materialize_sender_visual_for_role(
+    role: SenderVisualRole,
+    attribution: &unixnotis_core::NotificationAttribution,
+    app_icon: String,
+) -> Option<ImageData> {
+    if !super::super::ingress::payload::sender_visual_path_allowed(role, attribution) {
+        return None;
+    }
+    run_avatar_worker(
+        move || materialize_sender_visual(&app_icon, 64),
+        CONVERSATION_AVATAR_TIMEOUT,
+    )
+    .await
+    .flatten()
+}
+
+async fn materialize_content_visual(
+    attribution: &unixnotis_core::NotificationAttribution,
+    image_path: Option<&str>,
+) -> Option<ImageData> {
+    if !may_materialize_content_image(attribution) {
+        return None;
+    }
+    let path = image_path
+        .filter(|path| !path.trim().is_empty())
+        .map(str::to_owned)?;
+    run_avatar_worker(
+        move || materialize_sender_visual(&path, MAX_STORED_CONTENT_DIMENSION),
+        CONVERSATION_AVATAR_TIMEOUT,
+    )
+    .await
+    .flatten()
+}
+
+fn timed_out_sender_metadata() -> SenderMetadata {
+    // Timeout status prevents incomplete credentials from being treated as identity evidence
+    SenderMetadata {
+        status: SenderMetadataStatus::CredentialLookupTimedOut,
+        ..SenderMetadata::default()
+    }
 }
 
 #[cfg(test)]
-#[path = "../tests/flow.rs"]
+#[path = "tests/flow.rs"]
 mod tests;

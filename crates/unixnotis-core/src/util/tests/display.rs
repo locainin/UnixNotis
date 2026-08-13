@@ -63,3 +63,61 @@ fn bounded_display_text_handles_zero_and_exact_limits() {
     assert_eq!(sanitize_display_text_bounded("value", 5), "value...");
     assert_eq!(sanitize_display_text_bounded("ok", 5), "ok");
 }
+
+#[test]
+fn layout_folding_bounds_long_unbroken_tokens() {
+    let input = "x".repeat(200);
+    let folded = fold_text_for_layout(&input, MAX_DISPLAY_TOKEN_WIDTH);
+    let longest = folded
+        .split_whitespace()
+        .map(|part| part.chars().filter(char::is_ascii_alphanumeric).count())
+        .max()
+        .unwrap_or(0);
+
+    assert!(folded.contains('…'));
+    assert!(longest <= MAX_DISPLAY_TOKEN_WIDTH);
+}
+
+#[test]
+fn layout_folding_handles_zero_exact_and_separate_token_limits() {
+    assert_eq!(fold_text_for_layout("unchanged", 0), "unchanged");
+    assert_eq!(
+        fold_text_for_layout(
+            &"x".repeat(MAX_DISPLAY_TOKEN_WIDTH),
+            MAX_DISPLAY_TOKEN_WIDTH
+        ),
+        "x".repeat(MAX_DISPLAY_TOKEN_WIDTH)
+    );
+    let separate = format!(
+        "{} {}",
+        "x".repeat(MAX_DISPLAY_TOKEN_WIDTH),
+        "y".repeat(MAX_DISPLAY_TOKEN_WIDTH)
+    );
+    assert_eq!(
+        fold_text_for_layout(&separate, MAX_DISPLAY_TOKEN_WIDTH),
+        separate
+    );
+}
+
+#[test]
+fn layout_folding_reserves_only_the_required_ellipsis_width() {
+    assert_eq!(fold_text_for_layout("xxxx", 3), "x…");
+    let folded = fold_text_for_layout(&"x".repeat(200), MAX_DISPLAY_TOKEN_WIDTH);
+
+    // The CJK-width ellipsis uses two columns beside 94 ASCII characters
+    assert_eq!(folded.chars().count(), 95);
+}
+
+#[test]
+fn layout_folding_counts_wide_glyphs_joiners_and_selectors() {
+    let wide = fold_text_for_layout(&"界".repeat(120), MAX_DISPLAY_TOKEN_WIDTH);
+    let emoji = fold_text_for_layout(
+        &"👨\u{200D}👩\u{200D}👧\u{200D}👦".repeat(80),
+        MAX_DISPLAY_TOKEN_WIDTH,
+    );
+
+    assert!(wide.chars().map(display_width).sum::<usize>() <= MAX_DISPLAY_TOKEN_WIDTH);
+    assert!(emoji.chars().map(display_width).sum::<usize>() <= MAX_DISPLAY_TOKEN_WIDTH);
+    assert!(display_width('界') > 1);
+    assert_eq!(display_width('\u{200D}'), 1);
+}

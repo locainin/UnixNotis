@@ -68,6 +68,13 @@ fn insert_hook_class(classes: &mut HashSet<String>, class_name: &str) {
 const fn hook_unixnotis_classes() -> &'static [&'static str] {
     // Hook-only classes can be real live selectors before the stock theme gives them rules
     &[
+        hooks::cut_corner::ROOT,
+        hooks::dnd_menu::ROOT,
+        hooks::dnd_menu::CONTENT,
+        hooks::dnd_menu::TITLE,
+        hooks::dnd_menu::CHOICE,
+        hooks::dnd_menu::INDEFINITE,
+        hooks::dnd_menu::SEPARATOR,
         hooks::panel_action::ROW,
         hooks::panel_action::GROUP,
         hooks::panel_action::ROOT,
@@ -83,6 +90,9 @@ const fn hook_unixnotis_classes() -> &'static [&'static str] {
         hooks::panel_action::ICON_ONLY,
         hooks::panel_action::LABEL_HIDDEN,
         hooks::panel_shell::SUBTITLE,
+        hooks::panel_shell::SEARCH_MAGNIFIER,
+        hooks::panel_shell::SEARCH_CLEAR,
+        hooks::panel_shell::SEARCH_OWNED_ICONS,
         hooks::panel_shell::SEARCH_SHELL,
         hooks::panel_shell::SEARCH_ACCENT,
         hooks::panel_shell::SEARCH_STAR,
@@ -134,9 +144,6 @@ const fn hook_unixnotis_classes() -> &'static [&'static str] {
         hooks::group_row::CHEVRON,
         hooks::empty_row::ROOT,
         hooks::empty_row::LABEL,
-        hooks::ghost_row::ROOT,
-        "unixnotis-stack-ghost-1",
-        "unixnotis-stack-ghost-2",
         "unixnotis-media-stack-player",
         "unixnotis-media-row-player",
         "unixnotis-media-card-player",

@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::current_config_text;
 
 #[test]
 fn run_import_reports_missing_bundle_instead_of_succeeding() {
@@ -40,7 +41,7 @@ fn import_dry_run_reports_create_and_overwrite_counts() {
     assert_eq!(summary.excluded, 1);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read config"),
-        "old = true"
+        current_config_text("old = true")
     );
 }
 
@@ -84,7 +85,7 @@ fn import_writes_files_and_creates_backup_for_overwrites() {
     assert!(backup_dir.join("config.toml").exists());
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read config"),
-        "[theme]\nbase_css = \"base.css\"\n"
+        current_config_text("[theme]\nbase_css = \"base.css\"\n")
     );
 }
 
@@ -108,7 +109,7 @@ fn import_accepts_bundle_that_contains_only_config_toml() {
     assert_eq!(summary.created, 1);
     assert_eq!(
         fs::read_to_string(import_root.path.join("config.toml")).expect("read config"),
-        "title = \"only config\"\n"
+        current_config_text("title = \"only config\"\n")
     );
 }
 

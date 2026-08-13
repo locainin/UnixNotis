@@ -9,12 +9,13 @@ use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::daemon::DaemonState;
+use crate::store::ExpirationTicket;
 use unixnotis_core::CloseReason;
 
 /// Commands sent to the expiration scheduler
 pub enum ExpirationCommand {
-    Schedule { id: u32, deadline: Instant },
-    Cancel { id: u32 },
+    Schedule { ticket: ExpirationTicket },
+    Cancel { id: u32, generation: u64 },
 }
 
 /// Asynchronous expiration manager backed by a priority queue
@@ -29,9 +30,9 @@ impl ExpirationScheduler {
         tokio::spawn(async move {
             let mut heap: BinaryHeap<ExpirationItem> = BinaryHeap::new();
             // Tracks the latest deadline per notification to discard stale heap entries
-            let mut scheduled: HashMap<u32, Instant> = HashMap::new();
+            let mut scheduled: HashMap<u32, ExpirationTicket> = HashMap::new();
             loop {
-                let next_deadline = heap.peek().map(|item| item.deadline);
+                let next_deadline = heap.peek().map(|item| item.ticket.deadline);
                 if next_deadline.is_none() {
                     let Some(cmd) = receiver.recv().await else {
                         break;
@@ -51,47 +52,45 @@ impl ExpirationScheduler {
                     () = tokio::time::sleep_until(deadline.into()) => {
                         let now = Instant::now();
                         while let Some(item) = heap.peek() {
-                            if item.deadline > now {
+                            if item.ticket.deadline > now {
                                 break;
                             }
                             let Some(item) = heap.pop() else {
                                 break;
                             };
-                            let is_current = scheduled
-                                .get(&item.id)
-                                .is_some_and(|deadline| *deadline == item.deadline);
+                            let is_current =
+                                scheduled.get(&item.ticket.id) == Some(&item.ticket);
                             if !is_current {
                                 continue;
                             }
-                            // Verify the deadline is still current before closing the notification
-                            let expiration = {
-                                let store = state.store.lock().await;
-                                store.expiration_for(item.id)
+                            // Validation and removal share the same store lock
+                            let removed = {
+                                let mut store = state.store.lock().await;
+                                store.expire_if_current(item.ticket)
                             };
-                            let is_still_current = expiration
-                                .is_some_and(|deadline| deadline == item.deadline);
-                            if is_still_current {
-                                // Remove the scheduled entry only once the deadline is confirmed
-                                // to still be active. This avoids dropping new schedules created
-                                // while the expiration task was waiting on the store lock
-                                if scheduled.get(&item.id) == Some(&item.deadline) {
-                                    scheduled.remove(&item.id);
-                                }
-                                // Expiration closes must be observable so signal/state failures
-                                // are visible in logs instead of being silently ignored
-                                if let Err(err) =
-                                    state.close_notification(item.id, CloseReason::Expired).await
+                            // Remove only the exact scheduler generation that was inspected
+                            if scheduled.get(&item.ticket.id) == Some(&item.ticket) {
+                                scheduled.remove(&item.ticket.id);
+                            }
+                            if removed.is_some() {
+                                // Fanout happens only after the exact generation was removed
+                                if let Err(err) = state
+                                    .publish_notification_closed(
+                                        unixnotis_core::NotificationKey {
+                                            id: item.ticket.id,
+                                            generation: item.ticket.generation,
+                                        },
+                                        CloseReason::Expired,
+                                    )
+                                    .await
                                 {
                                     warn!(
                                         ?err,
-                                        id = item.id,
+                                        id = item.ticket.id,
+                                        generation = item.ticket.generation,
                                         "failed to close expired notification"
                                     );
                                 }
-                            } else if scheduled.get(&item.id) == Some(&item.deadline) {
-                                // The store no longer expects this deadline (dismissed or updated),
-                                // so drop the stale schedule to avoid repeated checks
-                                scheduled.remove(&item.id);
                             }
                         }
                         maybe_compact(&mut heap, &scheduled);
@@ -104,10 +103,16 @@ impl ExpirationScheduler {
         Self { sender }
     }
 
-    pub fn schedule(&self, id: u32, deadline: Option<Instant>) {
+    pub fn schedule(&self, id: u32, generation: u64, deadline: Option<Instant>) {
         let command = match deadline {
-            Some(deadline) => ExpirationCommand::Schedule { id, deadline },
-            None => ExpirationCommand::Cancel { id },
+            Some(deadline) => ExpirationCommand::Schedule {
+                ticket: ExpirationTicket {
+                    id,
+                    generation,
+                    deadline,
+                },
+            },
+            None => ExpirationCommand::Cancel { id, generation },
         };
         if let Err(err) = self.sender.send(command) {
             warn!(?err, "expiration schedule request dropped");
@@ -117,13 +122,12 @@ impl ExpirationScheduler {
 
 #[derive(Debug, Copy, Clone)]
 struct ExpirationItem {
-    id: u32,
-    deadline: Instant,
+    ticket: ExpirationTicket,
 }
 
 impl PartialEq for ExpirationItem {
     fn eq(&self, other: &Self) -> bool {
-        self.deadline.eq(&other.deadline)
+        self.ticket.eq(&other.ticket)
     }
 }
 
@@ -137,30 +141,48 @@ impl PartialOrd for ExpirationItem {
 
 impl Ord for ExpirationItem {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse ordering to make BinaryHeap a min-heap on deadline
-        other.deadline.cmp(&self.deadline)
+        // Reverse every field so BinaryHeap remains a deterministic min-heap
+        other
+            .ticket
+            .deadline
+            .cmp(&self.ticket.deadline)
+            .then_with(|| other.ticket.generation.cmp(&self.ticket.generation))
+            .then_with(|| other.ticket.id.cmp(&self.ticket.id))
     }
 }
 
 fn apply_command(
     cmd: ExpirationCommand,
     heap: &mut BinaryHeap<ExpirationItem>,
-    scheduled: &mut HashMap<u32, Instant>,
+    scheduled: &mut HashMap<u32, ExpirationTicket>,
 ) {
     match cmd {
-        ExpirationCommand::Schedule { id, deadline } => {
-            // Keep the newest deadline and push to the heap for ordering
-            scheduled.insert(id, deadline);
-            heap.push(ExpirationItem { id, deadline });
+        ExpirationCommand::Schedule { ticket } => {
+            // Older commands cannot replace a later committed generation
+            let may_replace = scheduled
+                .get(&ticket.id)
+                .is_none_or(|current| current.generation <= ticket.generation);
+            if may_replace {
+                scheduled.insert(ticket.id, ticket);
+                heap.push(ExpirationItem { ticket });
+            }
         }
-        ExpirationCommand::Cancel { id } => {
-            // Cancel only updates the tracking map; stale heap entries are ignored
-            scheduled.remove(&id);
+        ExpirationCommand::Cancel { id, generation } => {
+            // A delayed close from an older generation must preserve a replacement timer
+            let may_remove = scheduled
+                .get(&id)
+                .is_some_and(|current| current.generation <= generation);
+            if may_remove {
+                scheduled.remove(&id);
+            }
         }
     }
 }
 
-fn maybe_compact(heap: &mut BinaryHeap<ExpirationItem>, scheduled: &HashMap<u32, Instant>) {
+fn maybe_compact(
+    heap: &mut BinaryHeap<ExpirationItem>,
+    scheduled: &HashMap<u32, ExpirationTicket>,
+) {
     // Count how many expiration entries are still real and expected to happen
     let live = scheduled.len();
 
@@ -182,11 +204,8 @@ fn maybe_compact(heap: &mut BinaryHeap<ExpirationItem>, scheduled: &HashMap<u32,
     let mut rebuilt = BinaryHeap::with_capacity(live);
 
     // Copy each real scheduled expiration into the new clean heap
-    for (id, deadline) in scheduled {
-        rebuilt.push(ExpirationItem {
-            id: *id,
-            deadline: *deadline,
-        });
+    for ticket in scheduled.values() {
+        rebuilt.push(ExpirationItem { ticket: *ticket });
     }
 
     // Swap out the old messy heap for the rebuilt one with only live entries

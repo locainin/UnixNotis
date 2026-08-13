@@ -1,9 +1,10 @@
 //! CSS provider loading with explicit fallback outcomes
 
-use std::fs;
+use std::io;
 use std::path::Path;
 
 use tracing::warn;
+use unixnotis_core::{filesystem::read_regular_file_bounded, MAX_CSS_FILE_BYTES};
 
 use super::merge::merge_css_with_overrides;
 use super::model::CssFileLoadResult;
@@ -18,7 +19,7 @@ pub fn load_provider_with_overrides(
     overrides: &str,
     inject_base_tokens: bool,
 ) -> CssFileLoadResult {
-    match fs::read_to_string(path) {
+    match read_runtime_css(path) {
         Ok(contents) => {
             let contents = if inject_base_tokens {
                 ensure_base_tokens(&contents, path)
@@ -63,4 +64,10 @@ pub fn load_provider_with_overrides(
             CssFileLoadResult::read_failure(err.to_string())
         }
     }
+}
+
+/// Read one configured stylesheet through the shared no-follow regular-file boundary
+fn read_runtime_css(path: &Path) -> io::Result<String> {
+    let bytes = read_regular_file_bounded(path, MAX_CSS_FILE_BYTES)?;
+    String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }

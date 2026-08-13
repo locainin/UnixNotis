@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::schedule::DelayedRefreshTasks;
-use crate::media::mpris::PlayerState;
+use crate::media::mpris::{MprisFairnessState, PlayerState};
 use crate::media::MediaInfo;
 
 pub(super) struct MediaRuntimeState {
@@ -15,6 +15,10 @@ pub(super) struct MediaRuntimeState {
     pub(super) last_snapshot: Vec<MediaInfo>,
     // One delayed retry plan per player
     pub(super) delayed_refreshes: DelayedRefreshTasks,
+    // Rotates bounded candidate probes so names outside the first sorted page get a turn
+    pub(super) discovery_cursor: usize,
+    // A monotonic lease wakes quiet full-capacity inventories without polling
+    pub(super) mpris_fairness: MprisFairnessState,
 }
 
 impl MediaRuntimeState {
@@ -25,6 +29,20 @@ impl MediaRuntimeState {
             cache: HashMap::new(),
             last_snapshot: Vec::new(),
             delayed_refreshes: HashMap::new(),
+            discovery_cursor: 0,
+            mpris_fairness: MprisFairnessState::new(),
+        }
+    }
+}
+
+impl Drop for MediaRuntimeState {
+    fn drop(&mut self) {
+        // Connection teardown must cancel delayed work instead of detaching it
+        for task in self.delayed_refreshes.drain().map(|(_, task)| task) {
+            task.abort();
+        }
+        for player in self.players.values() {
+            let _ = player.listener_cancel.send(true);
         }
     }
 }

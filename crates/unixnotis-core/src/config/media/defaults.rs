@@ -1,6 +1,6 @@
 use super::types::{
-    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaNavigationPosition,
-    MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
+    MediaArtPosition, MediaConfig, MediaControlsPosition, MediaLayout, MediaLocalArtPolicy,
+    MediaNavigationPosition, MediaPositionFormat, MediaRemoteArtPolicy, MediaTitleFallback,
 };
 
 // Compact artwork leaves more horizontal space for title metadata and controls
@@ -45,6 +45,9 @@ impl Default for MediaConfig {
             denylist: vec!["playerctld".to_string()],
             // Browsers stay opt-in because webpage metadata can choose artwork URLs
             remote_art_policy: MediaRemoteArtPolicy::NativeOnly,
+            // Native players regain the normal cover-art behavior; browser local paths remain denied
+            local_art_policy: MediaLocalArtPolicy::AllAdmitted,
+            local_art_executable_allowlist: Vec::new(),
         }
     }
 }

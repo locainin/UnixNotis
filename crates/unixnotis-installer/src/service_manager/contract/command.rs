@@ -1,18 +1,12 @@
-use std::process::{Command, Stdio};
+use std::process::Command;
+use unixnotis_core::CommandSpec as ProcessCommandSpec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandSpec {
     // Human-readable command shown in logs without exposing inherited environment values
     label: String,
-    // Executable name stays separate so tests can assert command construction directly
-    program: String,
-    // Arguments are stored as data so no shell parsing is involved
-    pub(in crate::service_manager::contract) args: Vec<String>,
-    // Env overrides keep sensitive values out of argv while still giving child tools the session
-    pub(in crate::service_manager::contract) envs: Vec<(String, String)>,
-    // Some probes are intentionally quiet to avoid corrupting the TUI
-    suppress_stdout: bool,
-    suppress_stderr: bool,
+    // Shared process spec keeps executable, arguments, and environment structurally separate
+    command: ProcessCommandSpec,
 }
 
 impl CommandSpec {
@@ -27,11 +21,10 @@ impl CommandSpec {
     {
         Self {
             label: label.into(),
-            program: program.into(),
-            args: args.into_iter().map(|arg| arg.to_string()).collect(),
-            envs: Vec::new(),
-            suppress_stdout: false,
-            suppress_stderr: false,
+            command: ProcessCommandSpec::direct(
+                program.into(),
+                args.into_iter().map(|arg| arg.to_string()),
+            ),
         }
     }
 
@@ -41,14 +34,7 @@ impl CommandSpec {
         value: impl Into<String>,
     ) -> Self {
         // Values live in the child environment instead of the process argument list
-        self.envs.push((name.into(), value.into()));
-        self
-    }
-
-    pub(in crate::service_manager) const fn quiet(mut self) -> Self {
-        // Availability probes should not leak command output into the parent process
-        self.suppress_stdout = true;
-        self.suppress_stderr = true;
+        self.command = self.command.with_env(name.into(), value.into());
         self
     }
 
@@ -57,23 +43,30 @@ impl CommandSpec {
     }
 
     pub fn program(&self) -> &str {
-        &self.program
+        self.command
+            .program()
+            .and_then(|program| program.to_str())
+            .expect("installer service commands always use UTF-8 direct programs")
+    }
+
+    pub fn args(&self) -> &[std::ffi::OsString] {
+        self.command.args().unwrap_or_default()
+    }
+
+    pub const fn envs(
+        &self,
+    ) -> &std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> {
+        self.command
+            .env()
+            .expect("installer service commands are always direct")
     }
 
     pub fn to_command(&self) -> std::io::Result<Command> {
-        let mut command = Command::new(super::command_routing::command_program(&self.program)?);
+        let program = self.program();
+        let mut command = Command::new(super::command_routing::command_program(program)?);
         // CommandSpec never goes through a shell, which keeps service-manager commands predictable
-        command.args(&self.args);
-        for (name, value) in &self.envs {
-            // Only backend-selected variables are added; inherited process env is left alone
-            command.env(name, value);
-        }
-        if self.suppress_stdout {
-            command.stdout(Stdio::null());
-        }
-        if self.suppress_stderr {
-            command.stderr(Stdio::null());
-        }
+        command.args(self.args());
+        command.envs(self.envs());
         Ok(command)
     }
 }

@@ -15,6 +15,40 @@ fn format_with_home_rewrites_prefix() {
 }
 
 #[test]
+fn installed_release_paths_share_the_binary_directories_local_root() {
+    let root = crate::test_support::fs::unique_temp_path("installed-release-paths");
+    let paths = InstallPaths {
+        repo_root: root.join("repo"),
+        bin_dir: root.join("prefix").join("bin"),
+        service: crate::service_manager::ServiceManager::systemd_user(root.join("units")),
+    };
+    let install_root = root.join("prefix").join("lib").join("unixnotis");
+
+    assert_eq!(
+        paths.installed_release_root().expect("release root"),
+        install_root
+    );
+    assert_eq!(
+        paths.installed_releases_dir().expect("releases directory"),
+        install_root.join("releases")
+    );
+    assert_eq!(
+        paths.installed_current_link().expect("current link"),
+        install_root.join("current")
+    );
+    assert_eq!(
+        paths
+            .installed_pending_manifest()
+            .expect("pending manifest"),
+        install_root.join("pending-install.json")
+    );
+    assert_eq!(
+        paths.installed_rollback_root().expect("rollback root"),
+        install_root.join("rollback")
+    );
+}
+
+#[test]
 fn is_unixnotis_repo_detects_markers() {
     // Validates that known workspace markers are detected in a Cargo.toml file
     let Ok(home) = env::var("HOME") else {

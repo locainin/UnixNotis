@@ -5,17 +5,51 @@ use super::super::parse::{
     next_css_block_with_offsets, normalize_selector, parse_css_declarations_with_offsets,
     should_recurse_at_rule, split_selectors, strip_css_comments,
 };
+use super::directives::DuplicateSelectorAllowlist;
 use super::values::{
     line_column_for_offset, should_suppress_duplicate_property_warning, web_length_value_warning,
 };
 use super::CssCheckLintFinding;
 
+struct CssLintContext<'a> {
+    // Shared source data stays together while recursive at-rules adjust only their offsets
+    source_contents: &'a str,
+    custom_properties: &'a CssCustomPropertyScopes,
+    duplicate_selector_allowlist: &'a DuplicateSelectorAllowlist,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct LintOptions {
+    pub(super) honor_suppressions: bool,
+}
+
+impl Default for LintOptions {
+    fn default() -> Self {
+        Self {
+            honor_suppressions: true,
+        }
+    }
+}
+
 pub(super) fn lint_css_contents_with_properties(
     contents: &str,
     custom_properties: &CssCustomPropertyScopes,
 ) -> Vec<CssCheckLintFinding> {
+    lint_css_contents_with_options(contents, custom_properties, LintOptions::default())
+}
+
+pub(super) fn lint_css_contents_with_options(
+    contents: &str,
+    custom_properties: &CssCustomPropertyScopes,
+    options: LintOptions,
+) -> Vec<CssCheckLintFinding> {
     // One collection keeps source order stable across color and rule diagnostics
     let mut warnings = Vec::new();
+    let duplicate_selector_allowlist = if options.honor_suppressions {
+        DuplicateSelectorAllowlist::from_source(contents)
+    } else {
+        DuplicateSelectorAllowlist::default()
+    };
 
     // Strip comments first so block scanning stays honest
     let stripped = strip_css_comments(contents);
@@ -52,12 +86,16 @@ pub(super) fn lint_css_contents_with_properties(
 
     // Selector repeats matter across the whole file
     let mut selector_seen: HashMap<String, usize> = HashMap::new();
+    let lint_context = CssLintContext {
+        source_contents: &stripped,
+        custom_properties,
+        duplicate_selector_allowlist: &duplicate_selector_allowlist,
+    };
     lint_css_block(
-        &stripped,
         &stripped,
         0,
         None,
-        custom_properties,
+        &lint_context,
         &mut selector_seen,
         &mut warnings,
     );
@@ -70,10 +108,9 @@ mod tests;
 
 fn lint_css_block(
     contents: &str,
-    source_contents: &str,
     base_offset: usize,
-    context: Option<String>,
-    custom_properties: &CssCustomPropertyScopes,
+    at_rule_context: Option<String>,
+    lint_context: &CssLintContext<'_>,
     selector_seen: &mut HashMap<String, usize>,
     warnings: &mut Vec<CssCheckLintFinding>,
 ) {
@@ -93,17 +130,16 @@ fn lint_css_block(
             if should_recurse_at_rule(&selector) {
                 // At-rules still matter because duplicate selectors and bad layout values can
                 // hide inside the nested block
-                let nested_context = match context.as_ref() {
+                let nested_context = match at_rule_context.as_ref() {
                     Some(parent) => format!("{parent} {selector}"),
                     None => selector.clone(),
                 };
                 // Keep the at-rule in the warning so the scope still makes sense
                 lint_css_block(
                     &css_block.block,
-                    source_contents,
                     base_offset + css_block.block_start,
                     Some(nested_context),
-                    custom_properties,
+                    lint_context,
                     selector_seen,
                     warnings,
                 );
@@ -116,23 +152,26 @@ fn lint_css_block(
             if selector_part.is_empty() {
                 continue;
             }
-            let key = match context.as_ref() {
+            let key = match at_rule_context.as_ref() {
                 // At-rule scope is part of identity so media variants are not false duplicates
                 Some(prefix) => format!("{prefix}::{selector_part}"),
                 None => selector_part.clone(),
             };
             let count = selector_seen.entry(key).or_insert(0);
             *count += 1;
-            if *count > 1 {
+            let selector_source_offset = base_offset + css_block.selector_start + selector_offset;
+            if *count > 1
+                && !lint_context
+                    .duplicate_selector_allowlist
+                    .contains(selector_source_offset)
+            {
                 // Point to the repeated selector rather than the opening block delimiter
-                let context_note = context
+                let context_note = at_rule_context
                     .as_ref()
                     .map(|ctx| format!(" within {ctx}"))
                     .unwrap_or_default();
-                let (lint_line, lint_column) = line_column_for_offset(
-                    source_contents,
-                    base_offset + css_block.selector_start + selector_offset,
-                );
+                let (lint_line, lint_column) =
+                    line_column_for_offset(lint_context.source_contents, selector_source_offset);
                 warnings.push(CssCheckLintFinding {
                     line: Some(lint_line),
                     column: Some(lint_column),
@@ -144,12 +183,12 @@ fn lint_css_block(
         }
 
         warnings.extend(lint_css_properties(
-            source_contents,
+            lint_context.source_contents,
             &selector,
             &css_block.block,
             base_offset + css_block.block_start,
-            context.as_deref(),
-            custom_properties,
+            at_rule_context.as_deref(),
+            lint_context.custom_properties,
         ));
     }
 }

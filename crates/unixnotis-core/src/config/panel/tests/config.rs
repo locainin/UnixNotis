@@ -26,12 +26,16 @@ fn default_panel_config_keeps_expected_layout_and_text_contract() {
     ));
     assert_eq!(panel.title, "Notifications");
     assert_eq!(panel.empty_text, "NO NOTIFICATIONS");
+    assert_eq!(panel.no_matching_text, "NO MATCHING NOTIFICATIONS");
     assert_eq!(panel.empty_offset_top, 24);
     assert_eq!(panel.empty_alignment, EmptyStateAlignment::Auto);
     assert_eq!(panel.quick_actions_label, "Quick settings");
     assert_eq!(panel.system_status_label, "System health");
     assert_eq!(panel.search_placeholder, "Search app, title, or message");
+    assert_eq!(panel.search_magnifier_icon, "system-search-symbolic");
     assert!(panel.action_row_visible);
+    assert!(!panel.reduced_motion);
+    assert!(panel.notification_avatars_visible);
     assert!(panel.notification_list_expand);
     assert!(panel.close_on_click_outside);
     assert!(panel.respect_work_area);
@@ -45,6 +49,16 @@ fn partial_panel_values_use_current_presentation_defaults() {
     assert_eq!(panel.quick_actions_label, "Quick settings");
     assert_eq!(panel.system_status_label, "System health");
     assert_eq!(panel.empty_offset_top, 24);
+    assert!(!panel.reduced_motion);
+    assert!(panel.notification_avatars_visible);
+}
+
+#[test]
+fn panel_config_parses_reduced_motion_preference() {
+    let panel: PanelConfig =
+        toml::from_str("reduced_motion = true").expect("reduced motion should parse");
+
+    assert!(panel.reduced_motion);
 }
 
 #[test]

@@ -5,27 +5,9 @@ use tokio::sync::mpsc;
 use unixnotis_core::MediaConfig;
 use zbus::fdo::DBusProxy;
 
-use super::super::discovery::{is_discoverable_player, refresh_players};
-use super::super::player::build_player_state;
-use super::support::{MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
-
-#[test]
-fn discovery_requires_an_mpris_name_that_passes_admission() {
-    let config = MediaConfig {
-        denylist: vec!["blocked".to_string()],
-        ..MediaConfig::default()
-    };
-
-    assert!(is_discoverable_player(
-        "org.mpris.MediaPlayer2.allowed",
-        &config
-    ));
-    assert!(!is_discoverable_player("org.example.allowed", &config));
-    assert!(!is_discoverable_player(
-        "org.mpris.MediaPlayer2.blocked",
-        &config
-    ));
-}
+use super::super::discovery::refresh_players;
+use super::super::fairness::MprisFairnessState;
+use super::support::{build_player_state, MprisFixture, TEST_PLAYER_IDENTITY, TEST_PLAYER_NAME};
 
 #[tokio::test]
 async fn discovery_adds_live_players_and_removes_stale_entries() {
@@ -43,6 +25,8 @@ async fn discovery_adds_live_players_and_removes_stale_entries() {
     stale.bus_name = stale_name.to_string();
     let mut stale_cancel = stale.listener_cancel.subscribe();
     let mut players = HashMap::from([(stale_name.to_string(), stale)]);
+    let mut discovery_cursor = 0;
+    let mut fairness = MprisFairnessState::new();
 
     tokio::time::timeout(
         Duration::from_secs(2),
@@ -52,6 +36,8 @@ async fn discovery_adds_live_players_and_removes_stale_entries() {
             &config,
             &signal_tx,
             &mut players,
+            &mut discovery_cursor,
+            &mut fairness,
         ),
     )
     .await

@@ -127,7 +127,7 @@ fn send_log_line_delivers_worker_log_event() {
     let _guard = lock_dropped_log_state();
     let (tx, rx) = mpsc::sync_channel(1);
 
-    send_log_line(&tx, "hello".to_string());
+    send_log_line(&tx, "hello");
 
     let event = rx.try_recv().expect("log event");
     assert!(matches!(
@@ -141,7 +141,7 @@ fn send_log_line_sanitizes_before_queueing() {
     let _guard = lock_dropped_log_state();
     let (tx, rx) = mpsc::sync_channel(1);
 
-    send_log_line(&tx, "unsafe\u{1b}[2Jline".to_string());
+    send_log_line(&tx, "unsafe\u{1b}[2Jline");
 
     let event = rx.try_recv().expect("log event");
     assert!(matches!(

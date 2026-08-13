@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use unixnotis_core::CardWidgetConfig;
 
-use super::super::utils::RefreshBackoff;
+use super::super::command_runtime::backoff::RefreshBackoff;
 
 pub struct CardGrid {
     // FlowBox root is embedded directly by the panel widget layout

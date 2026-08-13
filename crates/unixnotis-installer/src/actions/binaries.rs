@@ -2,24 +2,34 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
 use crate::managed_binaries::{is_managed_binary_name, validate_managed_binary_names};
 use crate::paths::InstallPaths;
-use unixnotis_core::program_in_path;
+use crate::toolchain::{cargo_command, resolve_cargo};
 
 pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<String>> {
+    let cargo = if paths.is_release_archive() {
+        None
+    } else {
+        Some(resolve_cargo()?)
+    };
+    resolve_install_binaries_with_cargo(paths, cargo.as_deref())
+}
+
+pub(super) fn resolve_install_binaries_with_cargo(
+    paths: &InstallPaths,
+    cargo: Option<&Path>,
+) -> Result<Vec<String>> {
     // Prefer the installer metadata list when it is present.
     let metadata_list = load_install_binaries_from_metadata(paths)?;
-    let cargo_available = program_in_path("cargo");
     if !metadata_list.is_empty() {
         // Validate against cargo metadata when available to catch stale entries.
-        if cargo_available && !paths.is_release_archive() {
+        if let Some(cargo) = cargo {
             // An empty Cargo inventory is an error and cannot widen the declared list
-            let available = load_install_binaries_from_cargo_metadata(paths)?;
+            let available = load_install_binaries_from_cargo_metadata(paths, cargo)?;
             let missing = metadata_list
                 .iter()
                 .filter(|name| !available.contains(*name))
@@ -36,8 +46,8 @@ pub(super) fn resolve_install_binaries(paths: &InstallPaths) -> Result<Vec<Strin
     }
 
     // Fall back to cargo metadata when no installer list is declared.
-    if cargo_available {
-        return load_install_binaries_from_cargo_metadata(paths)
+    if let Some(cargo) = cargo {
+        return load_install_binaries_from_cargo_metadata(paths, cargo)
             .with_context(|| "no installable binaries discovered from cargo metadata");
     }
 
@@ -52,7 +62,15 @@ pub(super) fn resolve_target_directory(paths: &InstallPaths) -> Result<PathBuf> 
         // Release archives already contain built binaries under their local bin directory
         return Ok(paths.repo_root.clone());
     }
-    let metadata = load_cargo_metadata(paths)?;
+    let cargo = resolve_cargo()?;
+    resolve_target_directory_with_cargo(paths, &cargo)
+}
+
+pub(super) fn resolve_target_directory_with_cargo(
+    paths: &InstallPaths,
+    cargo: &Path,
+) -> Result<PathBuf> {
+    let metadata = load_cargo_metadata(paths, cargo)?;
     Ok(metadata.target_directory)
 }
 
@@ -77,6 +95,7 @@ fn legacy_binaries() -> Vec<String> {
         "unixnotis-daemon".to_string(),
         "unixnotis-popups".to_string(),
         "unixnotis-center".to_string(),
+        "unixnotis-svg-renderer".to_string(),
         "unixnotis-css-validate".to_string(),
         "noticenterctl".to_string(),
     ]
@@ -182,14 +201,17 @@ struct ReleaseManifest {
     binaries: Vec<String>,
 }
 
-fn load_install_binaries_from_cargo_metadata(paths: &InstallPaths) -> Result<Vec<String>> {
-    let metadata = load_cargo_metadata(paths)?;
+fn load_install_binaries_from_cargo_metadata(
+    paths: &InstallPaths,
+    cargo: &Path,
+) -> Result<Vec<String>> {
+    let metadata = load_cargo_metadata(paths, cargo)?;
     extract_bins_from_metadata(&metadata)
 }
 
-fn load_cargo_metadata(paths: &InstallPaths) -> Result<CargoMetadata> {
+fn load_cargo_metadata(paths: &InstallPaths, cargo: &Path) -> Result<CargoMetadata> {
     // cargo metadata is the most robust source of workspace targets.
-    let output = Command::new("cargo")
+    let output = cargo_command(cargo)?
         .args(["metadata", "--no-deps", "--format-version", "1"])
         .current_dir(&paths.repo_root)
         .output()

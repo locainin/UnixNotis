@@ -8,18 +8,6 @@ use crate::ui::notifications::model::types::{GroupRange, RowKey};
 use crate::ui::notifications::test_support as support;
 
 #[test]
-fn collapsed_stack_depth_caps_at_two() {
-    assert_eq!(collapsed_stack_depth(1, false), 0);
-    assert_eq!(collapsed_stack_depth(2, false), 1);
-    assert_eq!(collapsed_stack_depth(4, false), 2);
-}
-
-#[test]
-fn collapsed_stack_depth_is_zero_when_expanded() {
-    assert_eq!(collapsed_stack_depth(4, true), 0);
-}
-
-#[test]
 fn common_prefix_suffix_finds_stable_edges() {
     let group = Rc::<str>::from("terminal");
     let current = vec![
@@ -87,23 +75,31 @@ fn build_group_block_collapses_group_to_header_and_top_notification() {
     assert_eq!(header.count, 3);
     assert!(!header.expanded);
     let visible = items[1].data();
-    assert!(visible.stacked);
+    assert!(visible.collapsed_group_preview);
     assert_eq!(visible.stack_depth, 2);
     assert!(!visible.expanded);
 }
 
 #[gtk::test]
-fn build_group_block_keeps_single_collapsed_notification_unstacked() {
+fn build_group_block_keeps_single_notification_outside_collapsed_group_preview() {
     let mut list = support::make_list();
     list.seed(vec![support::notification(1, "Terminal")], Vec::new());
     let key = list.entries.get(&1).expect("entry").app_key.clone();
     let ids = list.grouped_cache.get(&key).expect("group ids").clone();
 
-    let (items, _keys) = list.build_group_block(&key, &ids);
+    let (items, keys) = list.build_group_block(&key, &ids);
 
     assert_eq!(items.len(), 2);
+    assert_eq!(
+        keys,
+        vec![
+            RowKey::GroupHeader { group: key.clone() },
+            RowKey::Notification { id: 1 },
+        ]
+    );
+    assert_eq!(items[0].data().count, 1);
     let visible = items[1].data();
-    assert!(!visible.stacked);
+    assert!(!visible.collapsed_group_preview);
     assert_eq!(visible.stack_depth, 0);
 }
 
@@ -137,10 +133,18 @@ fn build_group_block_expands_group_to_all_notifications() {
     );
     for item in items.iter().skip(1) {
         let data = item.data();
-        assert!(!data.stacked);
-        assert_eq!(data.stack_depth, 0);
+        assert!(!data.collapsed_group_preview);
         assert!(data.expanded);
+        assert_eq!(data.stack_depth, 0);
     }
+}
+
+#[test]
+fn collapsed_stack_depth_caps_at_two_and_clears_when_expanded() {
+    assert_eq!(collapsed_stack_depth(1, false), 0);
+    assert_eq!(collapsed_stack_depth(2, false), 1);
+    assert_eq!(collapsed_stack_depth(4, false), 2);
+    assert_eq!(collapsed_stack_depth(4, true), 0);
 }
 
 #[gtk::test]

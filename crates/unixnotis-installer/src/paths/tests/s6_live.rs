@@ -24,11 +24,7 @@ fn install_paths_use_existing_local_s6_live_root_when_run_root_is_missing() {
 
     assert_eq!(paths.service.artifact_root(), data_root.as_path());
     assert_eq!(
-        paths
-            .service
-            .start_command()
-            .expect("s6 start command")
-            .args(),
+        paths.service.start_command().args(),
         &[
             "-l",
             local_live.to_string_lossy().as_ref(),
@@ -74,11 +70,7 @@ fn install_paths_use_symlinked_local_s6_live_root() {
 
     // s6-rc-update expects the live symlink name, not the resolved live:initial directory
     assert_eq!(
-        paths
-            .service
-            .start_command()
-            .expect("s6 start command")
-            .args(),
+        paths.service.start_command().args(),
         &[
             "-l",
             linked_live.to_string_lossy().as_ref(),
@@ -116,11 +108,7 @@ fn install_paths_use_existing_tmp_s6_live_root_for_standalone_supervision() {
 
     // Artix standalone local s6 uses a user-owned live root outside /run
     assert_eq!(
-        paths
-            .service
-            .start_command()
-            .expect("s6 start command")
-            .args(),
+        paths.service.start_command().args(),
         &[
             "-l",
             standalone_live.to_string_lossy().as_ref(),
@@ -164,11 +152,7 @@ fn install_paths_ignore_symlinked_tmp_s6_live_root() {
 
     // Auto-detection must not follow a symlinked /tmp live root into another tree
     assert_eq!(
-        paths
-            .service
-            .start_command()
-            .expect("s6 start command")
-            .args(),
+        paths.service.start_command().args(),
         &[
             "-l",
             expected_fallback.as_ref(),
@@ -242,12 +226,8 @@ fn install_paths_allow_explicit_symlinked_s6_live_root() {
     let paths = InstallPaths::discover().expect("paths should resolve in repo tests");
 
     assert_eq!(
-        paths
-            .service
-            .start_command()
-            .expect("s6 start command")
-            .args()[1],
-        linked_live.to_string_lossy()
+        paths.service.start_command().args()[1],
+        linked_live.as_os_str()
     );
 
     restore_env("UNIXNOTIS_SERVICE_MANAGER", previous_manager);

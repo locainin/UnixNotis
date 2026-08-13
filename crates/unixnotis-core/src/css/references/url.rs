@@ -1,8 +1,8 @@
 //! Decoded CSS `url(...)` discovery and byte-range extraction
 
 use super::lexer::{
-    consume_escape, consume_identifier, skip_comment, skip_css_whitespace, skip_quoted_value,
-    starts_comment, utf8_char_len, would_start_identifier,
+    consume_escape, identifier_matches, skip_comment, skip_css_whitespace, skip_quoted_value,
+    starts_comment, trim_css_whitespace_range, utf8_char_len, would_start_identifier,
 };
 use super::{CssReference, CssReferenceError, CssUrlSpan};
 
@@ -47,8 +47,8 @@ pub fn collect_css_url_spans(css_text: &str) -> Result<Vec<CssUrlSpan>, CssRefer
         }
 
         // CSS escapes are decoded while the source indexes remain byte-exact
-        let (name, name_end) = consume_identifier(css_text, index);
-        if name.eq_ignore_ascii_case("url") && bytes.get(name_end) == Some(&b'(') {
+        let (is_url, name_end) = identifier_matches(css_text, index, "url");
+        if is_url && bytes.get(name_end) == Some(&b'(') {
             let (span, next_index) = parse_url_value(css_text, name_end.saturating_add(1))
                 .ok_or(CssReferenceError::UnterminatedUrl)?;
             if next_index <= index {
@@ -148,14 +148,14 @@ pub(super) fn parse_url_value(input: &str, open_index: usize) -> Option<(CssUrlS
             continue;
         }
         if byte == b')' {
-            let raw = &input[raw_start..index];
-            let value = raw.trim();
-            // Leading whitespace was consumed before raw_start was recorded
-            let value_start = raw_start;
-            let value_end = value_start + value.len();
+            // CSS defines five ASCII whitespace bytes; Unicode whitespace remains URL data
+            let (value_start, value_end) = trim_css_whitespace_range(bytes, raw_start, index);
+            if !valid_url_value_range(input, value_start, value_end) {
+                return None;
+            }
             return Some((
                 CssUrlSpan {
-                    value: value.to_string(),
+                    value: input[value_start..value_end].to_string(),
                     value_start,
                     value_end,
                     ambiguous,
@@ -176,4 +176,15 @@ pub(super) fn parse_url_value(input: &str, open_index: usize) -> Option<(CssUrlS
         index = index.saturating_add(utf8_char_len(byte));
     }
     None
+}
+
+pub(super) const fn valid_url_value_range(
+    input: &str,
+    value_start: usize,
+    value_end: usize,
+) -> bool {
+    // Scanner offsets are accepted only when direct string slicing is safe
+    value_start <= value_end
+        && input.is_char_boundary(value_start)
+        && input.is_char_boundary(value_end)
 }

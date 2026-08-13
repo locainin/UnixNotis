@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use crate::system_tools;
 
 use super::super::contract::{
-    envdir_file_contents, envdir_sync_prelude, is_safe_env_name, render_envdir_shell_update,
-    shell_quote, shell_quote_path, CommandSpec, ReadinessIssue, ServiceArtifact,
-    ServiceArtifactKind, ServiceProbe, MANAGED_DIRECTORY_MARKER,
+    envdir_file_contents, is_safe_env_name, shell_quote, shell_quote_path, CommandSpec,
+    ReadinessIssue, ServiceArtifact, ServiceArtifactKind, ServiceProbe, ServiceProbeOutput,
+    ServiceProbeState, MANAGED_DIRECTORY_MARKER,
 };
 
 // Runit service directories use the service name directly under the supervision root
@@ -68,11 +68,6 @@ pub fn install_artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArt
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
-    // `sv -V` checks the control binary without requiring the service to exist yet
-    Some(CommandSpec::new("sv -V", "sv", ["-V"]).quiet())
-}
-
 pub const fn is_enabled_command() -> Option<CommandSpec> {
     // Enablement is the presence of the service directory under the watched root
     None
@@ -88,15 +83,17 @@ pub fn enabled_by_artifacts(artifact_root: &Path) -> bool {
         && path_is_missing(&service.join(DOWN_FILE))
 }
 
-pub fn active_probe(artifact_root: &Path) -> Option<ServiceProbe> {
+pub fn active_probe(artifact_root: &Path) -> ServiceProbe {
     let service = service_dir_arg(artifact_root);
     // sv check can succeed for a requested down state, so parse status text instead
     let command = CommandSpec::new(
         format!("sv status {service}"),
         "sv",
         ["status".to_string(), service],
-    );
-    Some(ServiceProbe::stdout(command, status_output_is_running))
+    )
+    // Runit diagnostics are stable English strings only under the C locale
+    .env("LC_ALL", "C");
+    ServiceProbe::new(command, interpret_active_state)
 }
 
 pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -104,44 +101,24 @@ pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     None
 }
 
-pub fn enable_now_command(artifact_root: &Path) -> Option<CommandSpec> {
+pub fn enable_now_command(artifact_root: &Path) -> CommandSpec {
     start_command(artifact_root)
 }
 
-pub fn start_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("start", artifact_root))
+pub fn start_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("start", artifact_root)
 }
 
-pub fn disable_now_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("stop", artifact_root))
+pub fn disable_now_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("stop", artifact_root)
 }
 
-pub fn stop_for_reinstall_command(artifact_root: &Path) -> Option<CommandSpec> {
-    Some(sv_command("stop", artifact_root))
+pub fn stop_for_reinstall_command(artifact_root: &Path) -> CommandSpec {
+    sv_command("stop", artifact_root)
 }
 
-pub fn hyprland_startup_commands(artifact_root: &Path, import_vars: &[&str]) -> Vec<String> {
-    let service = service_dir(artifact_root);
-    let env_dir = service.join(ENV_DIR);
-    // Hyprland needs one line, so join shell steps with semicolons instead of newlines
-    // The envdir checks mirror Rust-side symlink refusal before shell redirection runs
-    let mut steps = envdir_sync_prelude(&env_dir);
-    for var in import_vars
-        .iter()
-        .copied()
-        .filter(|name| is_runit_envdir_name(name))
-    {
-        // mktemp writes a fresh file, and mv replaces the env file path without appending
-        steps.push(render_envdir_shell_update(var));
-    }
-    steps.push(format!(
-        "sv restart {} || sv start {}",
-        shell_quote_path(&service),
-        shell_quote_path(&service)
-    ));
-    // Values are read from the live session at runtime, never embedded in config text
-    let script = steps.join("; ");
-    vec![format!("sh -lc {}", shell_quote(&script))]
+pub fn hyprland_startup_commands(_artifact_root: &Path, _import_vars: &[&str]) -> Vec<String> {
+    vec!["noticenterctl sync-session-environment --service-manager runit".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {
@@ -256,6 +233,28 @@ fn path_is_missing(path: &Path) -> bool {
         .map_or_else(|err| err.kind() == std::io::ErrorKind::NotFound, |_| false)
 }
 
-fn status_output_is_running(stdout: &str) -> bool {
-    stdout.trim_start().starts_with("run:")
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    let stdout = output.stdout().trim();
+    if output.status_success() {
+        return if stdout.starts_with("run:") {
+            ServiceProbeState::Active
+        } else if stdout.starts_with("down:") {
+            ServiceProbeState::Inactive
+        } else {
+            ServiceProbeState::Indeterminate
+        };
+    }
+
+    // One-service probes return one only for this service-level failure class
+    // Match only runit's documented absence diagnostics so timeouts stay blocking
+    let service_is_absent = output.status_code() == Some(1)
+        && output.stderr().trim().is_empty()
+        && (stdout.ends_with(": runsv not running")
+            || stdout
+                .ends_with(": unable to change to service directory: No such file or directory"));
+    if service_is_absent {
+        ServiceProbeState::Absent
+    } else {
+        ServiceProbeState::Indeterminate
+    }
 }

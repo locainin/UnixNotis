@@ -1,7 +1,7 @@
 use tracing::warn;
 
 use super::super::super::Config;
-use crate::{program_in_path, util};
+use crate::{program_in_path, CommandSpec};
 
 pub(super) fn warn_missing_shell(config: &Config) -> bool {
     // Only warn when the config actually depends on shell syntax
@@ -66,19 +66,12 @@ fn config_requires_shell(config: &Config) -> bool {
     })
 }
 
-fn command_requires_shell_opt(value: &Option<String>) -> bool {
-    value.as_deref().is_some_and(command_requires_shell)
+fn command_requires_shell_opt(value: &Option<CommandSpec>) -> bool {
+    value.as_ref().is_some_and(command_requires_shell)
 }
 
-fn command_requires_shell(cmd: &str) -> bool {
-    let cmd = cmd.trim();
-    if cmd.is_empty() {
-        return false;
-    }
-
-    // Strip known runtime placeholders so braces do not trigger false positives
-    let cmd = cmd.replace("{value}", "0");
-    !util::is_simple_command(&cmd)
+fn command_requires_shell(command: &CommandSpec) -> bool {
+    command.uses_shell_command_string()
 }
 
 #[cfg(test)]

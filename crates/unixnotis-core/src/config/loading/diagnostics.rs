@@ -6,7 +6,7 @@ use serde::Serialize;
 use toml::Value;
 use tracing::{info, warn};
 
-use super::super::{Config, CURRENT_CONFIG_VERSION};
+use super::super::Config;
 
 /// Classification used by configuration diagnostics and doctor output
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -46,35 +46,28 @@ pub struct ConfigLoadReport {
     pub diagnostics: Vec<ConfigDiagnostic>,
 }
 
-pub(super) fn migration_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {
-    // Diagnostics inspect a separate value tree so deserialization behavior stays unchanged
+pub(super) fn empty_exact_media_policy_diagnostic(contents: &str) -> Option<ConfigDiagnostic> {
     let document = contents.parse::<Value>().ok()?;
-    // Unversioned files are schema zero and follow the explicit legacy migration path
-    let version = document
-        .as_table()
-        .and_then(|root| root.get("config_version"))
-        .and_then(Value::as_integer)
-        .and_then(|value| u32::try_from(value).ok())
-        .unwrap_or(0);
-    (version < CURRENT_CONFIG_VERSION).then(|| ConfigDiagnostic {
-        code: "config.schema.migrated",
-        kind: ConfigDiagnosticKind::Note,
-        path: Some("config_version".to_string()),
-        message: "Configuration was migrated to the current schema".to_string(),
-        original: Some(version.to_string()),
-        effective: Some(CURRENT_CONFIG_VERSION.to_string()),
-    })
-}
-
-pub(super) fn migrated_field_diagnostic(path: String) -> ConfigDiagnostic {
-    ConfigDiagnostic {
-        code: "config.schema.field-migrated",
-        kind: ConfigDiagnosticKind::Note,
-        path: Some(path),
-        message: "Missing legacy field received its schema-compatible value".to_string(),
-        original: None,
+    let root = document.as_table()?;
+    let media = root.get("media").and_then(Value::as_table)?;
+    let exact = media
+        .get("local_art_policy")
+        .and_then(Value::as_str)
+        .is_some_and(|value| value == "exact_executable_only");
+    let empty = media
+        .get("local_art_executable_allowlist")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty);
+    (exact && empty).then(|| ConfigDiagnostic {
+        code: "config.media.empty-exact-allowlist",
+        kind: ConfigDiagnosticKind::Warning,
+        path: Some("media.local_art_policy".to_string()),
+        message:
+            "Exact local artwork policy has an empty executable allowlist; artwork is disabled"
+                .to_string(),
+        original: Some("exact_executable_only".to_string()),
         effective: None,
-    }
+    })
 }
 
 pub(super) fn unknown_key_diagnostic(path: String) -> ConfigDiagnostic {
@@ -161,20 +154,23 @@ fn adjustment(path: &str, original: Option<String>, effective: Option<String>) -
 
 fn adjustment_code(path: &str) -> &'static str {
     // Specific codes remain stable even when the user-facing wording improves
-    if path.starts_with("widgets.volume.")
-        && [
-            "enabled",
-            "get_cmd",
-            "set_cmd",
-            "toggle_cmd",
-            "watch_cmd",
-            "parse_mode",
-        ]
-        .iter()
-        .any(|field| path.ends_with(field))
-    {
+    if [
+        "widgets.volume.enabled",
+        "widgets.volume.get_cmd",
+        "widgets.volume.set_cmd",
+        "widgets.volume.toggle_cmd",
+        "widgets.volume.watch_cmd",
+        "widgets.volume.parse_mode",
+    ]
+    .iter()
+    .any(|field| {
+        path.strip_prefix(field)
+            .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('.'))
+    }) {
         "config.widgets.volume-backend-selected"
-    } else if path == "widgets.brightness.watch_cmd" {
+    } else if path == "widgets.brightness.watch_cmd"
+        || path.starts_with("widgets.brightness.watch_cmd.")
+    {
         "config.widgets.brightness-backend-corrected"
     } else if path == "widgets.refresh_interval_ms" || path == "widgets.refresh_interval_slow_ms" {
         "config.widgets.refresh-clamped"

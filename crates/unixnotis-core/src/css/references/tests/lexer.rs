@@ -1,6 +1,6 @@
 use super::super::lexer::{
-    consume_escape, consume_identifier, skip_css_whitespace_and_comments, skip_quoted_value,
-    valid_escape, would_start_identifier,
+    consume_escape, identifier_matches, skip_css_whitespace_and_comments, skip_quoted_value,
+    trim_css_whitespace_range, valid_escape, would_start_identifier,
 };
 use super::super::{collect_css_import_values, collect_css_url_values, CssImportReference};
 
@@ -82,19 +82,20 @@ fn escaped_non_ascii_string_content_does_not_end_string_skipping_early() {
 }
 
 #[test]
-fn identifier_consumption_preserves_unicode_digits_hyphens_and_exact_end() {
-    assert_eq!(
-        consume_identifier("é-theme2(", 0),
-        ("é-theme2".to_string(), 9)
-    );
-    assert_eq!(consume_identifier("_theme(", 0), ("_theme".to_string(), 6));
-    assert_eq!(consume_identifier("url-2(", 0), ("url-2".to_string(), 5));
+fn fixed_identifier_matching_decodes_escapes_without_allocating_names() {
+    assert_eq!(identifier_matches("u\\72l(", 0, "url"), (true, 5));
+    assert_eq!(identifier_matches("im\\70ort ", 0, "import"), (true, 8));
+    assert_eq!(identifier_matches("url-extra(", 0, "url"), (false, 9));
+    assert_eq!(identifier_matches("éurl(", 0, "url"), (false, 5));
+    assert_eq!(identifier_matches("xrl(", 0, "url"), (false, 3));
+    assert_eq!(identifier_matches("urx(", 0, "url"), (false, 3));
 }
 
 #[test]
-fn identifier_consumption_stops_before_invalid_escapes() {
-    assert_eq!(consume_identifier("url\\\nnext", 0), ("url".to_string(), 3));
-    assert_eq!(consume_identifier("url\\", 0), ("url".to_string(), 3));
+fn css_whitespace_range_trimming_handles_empty_and_nonempty_boundaries() {
+    assert_eq!(trim_css_whitespace_range(b" value ", 0, 7), (1, 6));
+    assert_eq!(trim_css_whitespace_range(b"  ", 0, 1), (1, 1));
+    assert_eq!(trim_css_whitespace_range(b" x", 1, 1), (1, 1));
 }
 
 #[test]

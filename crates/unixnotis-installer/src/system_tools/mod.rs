@@ -2,6 +2,7 @@
 
 mod command;
 mod lookup;
+mod process;
 
 // Fake executable routing lives under /tests and never enters production binaries
 #[expect(
@@ -15,6 +16,7 @@ mod routing;
 pub mod routing;
 
 pub use command::{command, program_exists, program_path};
+pub use process::{output_bounded, BoundedOutput};
 
 #[cfg(test)]
 mod tests;

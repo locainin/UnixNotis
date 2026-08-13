@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+blake3.workspace = true
 chrono.workspace = true
 image.workspace = true
 resvg.workspace = true
@@ -14,8 +16,11 @@ serde_repr.workspace = true
 serde_ignored.workspace = true
 shell-words.workspace = true
 toml.workspace = true
+toml_edit.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+unicode-width.workspace = true
 zbus.workspace = true
 
 [dev-dependencies]

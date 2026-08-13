@@ -1,6 +1,6 @@
 //! Trial process launch and signal-time cleanup shell rendering
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 
@@ -11,11 +11,11 @@ use crate::system_tools;
 
 const TRIAL_DAEMON_ARGS: [&str; 4] = ["--trial", "--restore", "auto", "--yes"];
 
-pub fn run_trial(repo_root: PathBuf) -> Result<()> {
+pub fn run_trial(repo_root: &Path) -> Result<()> {
     println!("Starting UnixNotis trial run.");
     println!("Press Ctrl+C to stop and restore the previous daemon.");
 
-    let binaries = build_trial_binaries(&repo_root)?;
+    let binaries = build_trial_binaries(repo_root)?;
     println!("Trial control binary: {}", binaries.control.display());
 
     // A temporary PATH shim is optional; direct control-binary usage remains valid

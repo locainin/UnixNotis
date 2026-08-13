@@ -3,8 +3,15 @@ use std::collections::HashSet;
 use super::{MAX_WIDGET_COLUMNS, MIN_WIDGET_COLUMNS};
 use crate::{
     default_panel_action_order, default_panel_section_order, default_panel_widget_order, Config,
-    PanelActionConfig, PanelActionId, PanelConfig, PanelSection, PanelWidgetSection,
+    DndMenuChoice, NotificationMetadataConfig, PanelActionConfig, PanelActionId, PanelConfig,
+    PanelSection, PanelWidgetSection,
 };
+
+const MAX_DND_MENU_CHOICES: usize = 16;
+const MAX_DND_DURATION_MINUTES: u32 = 525_600;
+const MAX_DND_LABEL_CHARS: usize = 96;
+const MAX_METADATA_TEXT_CHARS: usize = 128;
+const MAX_ICON_NAME_CHARS: usize = 128;
 
 pub(super) fn sanitize_panel_text(panel: &mut PanelConfig) {
     // Empty core labels make the panel harder to operate, so restore only required text
@@ -14,6 +21,10 @@ pub(super) fn sanitize_panel_text(panel: &mut PanelConfig) {
     if panel.clear_label.trim().is_empty() {
         panel.clear_label = PanelConfig::default().clear_label;
     }
+    if panel.search_magnifier_icon.trim().is_empty() {
+        panel.search_magnifier_icon = PanelConfig::default().search_magnifier_icon;
+    }
+    truncate_chars(&mut panel.search_magnifier_icon, MAX_ICON_NAME_CHARS);
     sanitize_action_config(&mut panel.focus_action, PanelActionConfig::widgets());
     sanitize_action_config(&mut panel.dnd_action, PanelActionConfig::dnd());
     sanitize_action_config(&mut panel.clear_action, PanelActionConfig::clear());
@@ -31,6 +42,55 @@ pub(super) fn sanitize_panel_widget_order(order: &mut Vec<PanelWidgetSection>) {
 
 pub(super) fn sanitize_panel_action_order(order: &mut Vec<PanelActionId>) {
     sanitize_order(order, default_panel_action_order);
+}
+
+pub(super) fn sanitize_dnd_menu(panel: &mut PanelConfig) {
+    let mut seen = HashSet::new();
+    // An empty trigger list deliberately disables the context menu
+    panel
+        .dnd_menu_triggers
+        .retain(|trigger| seen.insert(*trigger));
+    panel.dnd_menu_choices.truncate(MAX_DND_MENU_CHOICES);
+    panel.dnd_menu_choices.retain_mut(|choice| {
+        let label = choice.label_mut();
+        truncate_chars(label, MAX_DND_LABEL_CHARS);
+        if label.trim().is_empty() {
+            // Empty buttons are unusable and should not occupy menu space
+            return false;
+        }
+
+        match choice {
+            DndMenuChoice::Duration { minutes, .. } => {
+                *minutes = (*minutes).clamp(1, MAX_DND_DURATION_MINUTES);
+            }
+            DndMenuChoice::Tomorrow { hour, minute, .. } => {
+                *hour = (*hour).min(23);
+                *minute = (*minute).min(59);
+            }
+            DndMenuChoice::Indefinite { .. } => {}
+        }
+        true
+    });
+}
+
+pub(super) fn sanitize_notification_metadata(config: &mut NotificationMetadataConfig) {
+    for text in [
+        &mut config.critical_label,
+        &mut config.low_label,
+        &mut config.normal_label,
+        &mut config.relative_now,
+        &mut config.relative_minutes,
+        &mut config.relative_hours,
+        &mut config.relative_days,
+        &mut config.transient_label,
+        &mut config.live_label,
+        &mut config.history_label,
+        &mut config.action_count_one,
+        &mut config.action_count_many,
+    ] {
+        // Empty metadata text is valid because it hides that optional badge
+        truncate_chars(text, MAX_METADATA_TEXT_CHARS);
+    }
 }
 
 fn sanitize_order<T>(order: &mut Vec<T>, defaults: fn() -> Vec<T>)
@@ -92,4 +152,12 @@ fn sanitize_column_count(value: usize, default_value: usize) -> usize {
         return default_value;
     }
     value.clamp(MIN_WIDGET_COLUMNS, MAX_WIDGET_COLUMNS)
+}
+
+fn truncate_chars(value: &mut String, max_chars: usize) {
+    // UTF-8 boundaries are found through char indices before truncation
+    let Some((index, _)) = value.char_indices().nth(max_chars) else {
+        return;
+    };
+    value.truncate(index);
 }

@@ -1,0 +1,370 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use chrono::Utc;
+use futures_util::TryStreamExt;
+use unixnotis_core::{
+    Action, AttributionReason, Notification, NotificationAttribution, NotificationImage, Urgency,
+};
+use zbus::fdo::DBusProxy;
+use zbus::message::Type;
+use zbus::zvariant::OwnedValue;
+use zbus::{Connection, MatchRule, MessageStream};
+
+use super::super::ControlServer;
+use crate::daemon::NOTIFICATIONS_OBJECT_PATH;
+use crate::test_support::daemon_state_for_test;
+
+#[tokio::test]
+async fn validated_action_emits_only_an_advertised_live_action() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = action_signal_stream(&sender).await;
+    let notification = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(action_notification(&sender, "open"), 0)
+            .active_notification()
+            .key()
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect("invoke advertised action");
+
+    assert_eq!(
+        next_action_signal(&mut stream).await,
+        (notification.id, "open".to_string())
+    );
+    let store = state.store.lock().await;
+    assert!(store.active_notification_view(notification.id).is_none());
+    assert!(store.list_history().is_empty());
+}
+
+#[tokio::test]
+async fn successful_action_keeps_a_resident_notification_active() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut resident = action_notification(&sender, "open");
+    resident.is_resident = true;
+    let notification = {
+        let mut store = state.store.lock().await;
+        store.insert(resident, 0).active_notification().key()
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect("resident action should be delivered");
+
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(notification.id)
+        .is_some());
+}
+
+#[tokio::test]
+async fn action_signal_reaches_owner_but_not_unrelated_observer() {
+    let state = daemon_state_for_test(false).await;
+    let owner = Connection::session().await.expect("owner session bus");
+    let observer = Connection::session().await.expect("observer session bus");
+    let mut owner_stream = action_signal_stream(&owner).await;
+    let mut observer_stream = action_signal_stream(&observer).await;
+    let notification = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(action_notification(&owner, "open"), 0)
+            .active_notification()
+            .key()
+    };
+
+    ControlServer::new(state)
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect("invoke owner action");
+
+    assert_eq!(
+        next_action_signal(&mut owner_stream).await,
+        (notification.id, "open".to_string())
+    );
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            observer_stream.try_next()
+        )
+        .await
+        .is_err(),
+        "unrelated observer must not receive action signal"
+    );
+}
+
+#[tokio::test]
+async fn action_keeps_notification_when_the_owner_disappears() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let notification = {
+        let mut store = state.store.lock().await;
+        store
+            .insert(action_notification(&sender, "open"), 0)
+            .active_notification()
+            .key()
+    };
+    let sender_name = sender.unique_name().expect("sender unique name").clone();
+    sender.close().await.expect("close sender connection");
+    let proxy = DBusProxy::new(state.connection())
+        .await
+        .expect("create bus proxy");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if !proxy
+                .name_has_owner(sender_name.clone().into())
+                .await
+                .expect("query sender ownership")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("bus should release the closed sender name");
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect_err("closed sender must reject the action");
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(notification.id)
+        .is_some());
+}
+
+#[tokio::test]
+async fn unconfirmed_action_does_not_emit_or_dismiss() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut notification = action_notification(&sender, "open");
+    notification.attribution.interactions = unixnotis_core::InteractionPolicies::CONFIRM_ACTIONS;
+    let key = {
+        let mut store = state.store.lock().await;
+        store.insert(notification, 0).active_notification().key()
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(key, "open", false)
+        .await
+        .expect_err("confirmation-required action must not run without confirmation");
+    assert!(state
+        .store
+        .lock()
+        .await
+        .active_notification_view(key.id)
+        .is_some());
+}
+
+#[tokio::test]
+async fn validated_action_rejects_missing_and_stale_action_generations() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let notification = {
+        let mut store = state.store.lock().await;
+        let notification = store
+            .insert(action_notification(&sender, "open"), 0)
+            .active_notification();
+        notification.key()
+    };
+    let server = ControlServer::new(state.clone());
+
+    server
+        .invoke_validated_action_generation(notification, "missing", false)
+        .await
+        .expect_err("unadvertised action must fail");
+}
+
+#[tokio::test]
+async fn replacement_commit_waits_until_action_signal_is_emitted() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let mut stream = action_signal_stream(&sender).await;
+    let mut original = action_notification(&sender, "open");
+    original.is_resident = true;
+    let notification = state
+        .store
+        .lock()
+        .await
+        .insert(original, 0)
+        .active_notification()
+        .key();
+    let id = notification.id;
+    let scheduler = crate::expire::ExpirationScheduler::start(state.clone());
+    let replacement_state = state.clone();
+    let replacement_sender = sender.clone();
+    let (replacement_done_tx, replacement_done_rx) = tokio::sync::oneshot::channel();
+    let replacement_committed = Arc::new(AtomicBool::new(false));
+    let observed_replacement_commit = Arc::clone(&replacement_committed);
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation_with_pre_emit(
+            notification,
+            "open",
+            false,
+            move || async move {
+                let replacement = action_notification(&replacement_sender, "different");
+                let replacement_committed = Arc::clone(&replacement_committed);
+                tokio::spawn(async move {
+                    let outcome = replacement_state
+                        .commit_notification_generation(replacement, id, &scheduler)
+                        .await;
+                    let replaced = outcome.replaced;
+                    let committed_id = outcome.active_notification().id;
+                    replacement_committed.store(true, Ordering::Release);
+                    let _sent = replacement_done_tx.send((committed_id, replaced));
+                });
+                tokio::task::yield_now().await;
+                assert!(
+                    !observed_replacement_commit.load(Ordering::Acquire),
+                    "replacement commit must remain blocked while the action signal is in flight"
+                );
+            },
+        )
+        .await
+        .expect("action must finish before replacement commit");
+
+    assert_eq!(next_action_signal(&mut stream).await.0, id);
+    let (committed_id, replaced) = replacement_done_rx
+        .await
+        .expect("replacement commit task must finish");
+    assert_eq!(committed_id, id);
+    assert!(replaced);
+}
+
+#[tokio::test]
+async fn stale_action_does_not_target_same_id_replacement() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let (stale_key, replacement_key) = {
+        let mut store = state.store.lock().await;
+        let first = store
+            .insert(action_notification(&sender, "delete"), 0)
+            .active_notification();
+        let stale_key = first.key();
+        let second = store
+            .insert(action_notification(&sender, "delete"), first.id)
+            .active_notification();
+        (stale_key, second.key())
+    };
+
+    ControlServer::new(state.clone())
+        .invoke_validated_action_generation(stale_key, "delete", false)
+        .await
+        .expect_err("a delayed action must not target a same-ID replacement");
+
+    let store = state.store.lock().await;
+    let replacement = store
+        .active_notification_view(replacement_key.id)
+        .expect("replacement should remain active");
+    assert_eq!(replacement.key(), replacement_key);
+}
+
+#[tokio::test]
+async fn validated_action_rejects_a_conflicting_application_claim() {
+    let state = daemon_state_for_test(false).await;
+    let sender = Connection::session().await.expect("sender session bus");
+    let notification = {
+        let mut notification = action_notification(&sender, "open");
+        notification.attribution = NotificationAttribution::conflict(
+            "Example Chat",
+            "org.example.Chat",
+            AttributionReason::ApplicationClaimMismatch,
+            "application claim mismatch; source /tmp/fake",
+            "conflict:example-chat".to_string(),
+        );
+        state
+            .store
+            .lock()
+            .await
+            .insert(notification, 0)
+            .active_notification()
+            .key()
+    };
+
+    ControlServer::new(state)
+        .invoke_validated_action_generation(notification, "open", false)
+        .await
+        .expect_err("conflicting attribution must not receive an action signal");
+}
+
+fn action_notification(sender: &Connection, key: &str) -> Notification {
+    Notification {
+        id: 0,
+        generation: 0,
+        app_name: "ActionApp".to_string(),
+        app_icon: String::new(),
+        attribution: NotificationAttribution::verified(
+            "ActionApp",
+            "ActionApp",
+            "org.example.ActionApp",
+            "",
+            AttributionReason::ExactSystemExecutable,
+            "exact system executable",
+            "system-app:org.example.ActionApp".to_string(),
+        ),
+        attribution_diagnostics: unixnotis_core::AttributionDiagnostics::default(),
+        summary: "Action".to_string(),
+        body: String::new(),
+        actions: vec![Action {
+            key: key.to_string(),
+            label: "Run".to_string(),
+        }],
+        inline_reply: unixnotis_core::InlineReply::default(),
+        inline_reply_policy: unixnotis_core::InlineReplyPolicy::Allow,
+        hints: HashMap::<String, OwnedValue>::new(),
+        urgency: Urgency::Normal,
+        category: None,
+        is_transient: false,
+        is_resident: false,
+        suppress_popup: false,
+        suppress_sound: false,
+        image: NotificationImage::default(),
+        expire_timeout: 0,
+        received_at: Utc::now(),
+        sender_name: sender.unique_name().map(ToString::to_string),
+        sender_pid: Some(std::process::id()),
+        sender_start_time: Some(
+            crate::daemon::notifications::identity::read_process_start_time(std::process::id())
+                .expect("test process should expose a start time"),
+        ),
+        sender_executable: None,
+    }
+}
+
+async fn action_signal_stream(receiver: &Connection) -> MessageStream {
+    let rule = MatchRule::builder()
+        .msg_type(Type::Signal)
+        .interface("org.freedesktop.Notifications")
+        .expect("notification interface")
+        .member("ActionInvoked")
+        .expect("action member")
+        .path(NOTIFICATIONS_OBJECT_PATH)
+        .expect("notification path")
+        .build();
+    MessageStream::for_match_rule(rule, receiver, Some(8))
+        .await
+        .expect("action signal stream")
+}
+
+async fn next_action_signal(stream: &mut MessageStream) -> (u32, String) {
+    let message = tokio::time::timeout(std::time::Duration::from_secs(1), stream.try_next())
+        .await
+        .expect("action signal timeout")
+        .expect("read action signal")
+        .expect("action signal stream ended");
+    message.body().deserialize().expect("action signal body")
+}

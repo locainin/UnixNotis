@@ -1,7 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::super::contract::{CommandSpec, ReadinessIssue, ServiceArtifact, ServiceArtifactKind};
+use super::super::contract::{
+    CommandSpec, ReadinessIssue, ServiceArtifact, ServiceArtifactKind, ServiceManagerAvailability,
+    ServiceManagerAvailabilityOutput, ServiceManagerAvailabilityProbe, ServiceProbe,
+    ServiceProbeOutput, ServiceProbeState,
+};
 
 // Dinit service names are file names without the .service suffix used by systemd
 pub const SERVICE_NAME: &str = "unixnotis-daemon";
@@ -43,15 +47,33 @@ pub fn artifacts(artifact_root: &Path, bin_dir: &Path) -> Vec<ServiceArtifact> {
     ]
 }
 
-pub fn availability_command() -> Option<CommandSpec> {
-    Some(
-        CommandSpec::new(
-            "dinitctl --user --quiet list",
-            "dinitctl",
-            ["--user", "--quiet", "list"],
-        )
-        .quiet(),
+pub fn availability_probe() -> ServiceManagerAvailabilityProbe {
+    let command = CommandSpec::new(
+        "dinitctl --user --quiet list",
+        "dinitctl",
+        ["--user", "--quiet", "list"],
     )
+    // Transport diagnostics are matched only in the stable C locale
+    .env("LC_ALL", "C");
+    ServiceManagerAvailabilityProbe::new(command, interpret_availability)
+}
+
+fn interpret_availability(
+    output: ServiceManagerAvailabilityOutput<'_>,
+) -> ServiceManagerAvailability {
+    if output.status_success() {
+        return ServiceManagerAvailability::Available;
+    }
+    // This prefix comes from dinit's client-side control-socket connection failure
+    if output.did_exit()
+        && output
+            .stderr()
+            .trim()
+            .starts_with("dinit-client: connecting to socket")
+    {
+        return ServiceManagerAvailability::Unavailable;
+    }
+    ServiceManagerAvailability::Indeterminate
 }
 
 pub const fn is_enabled_command() -> Option<CommandSpec> {
@@ -59,12 +81,42 @@ pub const fn is_enabled_command() -> Option<CommandSpec> {
     None
 }
 
-pub fn is_active_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
-        format!("dinitctl --user --quiet is-started {SERVICE_NAME}"),
+pub fn active_probe() -> ServiceProbe {
+    // `status` identifies an unloaded service separately from control-socket failures
+    let command = CommandSpec::new(
+        format!("dinitctl --user status {SERVICE_NAME}"),
         "dinitctl",
-        ["--user", "--quiet", "is-started", SERVICE_NAME],
-    ))
+        ["--user", "status", SERVICE_NAME],
+    );
+    ServiceProbe::new(command, interpret_active_state)
+}
+
+fn interpret_active_state(output: ServiceProbeOutput<'_>) -> ServiceProbeState {
+    if output.status_success() {
+        return match output
+            .stdout()
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("State: "))
+        {
+            Some("STARTED" | "STARTING" | "STOPPING") => ServiceProbeState::Active,
+            Some("STOPPED") => ServiceProbeState::Inactive,
+            Some(state) if state.starts_with("STOPPED (") && state.ends_with(')') => {
+                ServiceProbeState::Inactive
+            }
+            Some(_) | None => ServiceProbeState::Indeterminate,
+        };
+    }
+
+    // dinitctl status uses this exact result when the service has no live record
+    // Other exit failures may be socket or protocol faults and remain indeterminate
+    if output.status_code() == Some(1)
+        && output.stdout().trim().is_empty()
+        && output.stderr().trim() == "dinitctl: service not loaded."
+    {
+        return ServiceProbeState::Absent;
+    }
+
+    ServiceProbeState::Indeterminate
 }
 
 pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
@@ -72,25 +124,25 @@ pub const fn reload_after_artifact_change() -> Option<CommandSpec> {
     None
 }
 
-pub fn enable_now_command() -> Option<CommandSpec> {
+pub fn enable_now_command() -> CommandSpec {
     // The boot.d artifact owns persistence; start only handles the live session
     start_command()
 }
 
-pub fn start_command() -> Option<CommandSpec> {
-    Some(CommandSpec::new(
+pub fn start_command() -> CommandSpec {
+    CommandSpec::new(
         format!("dinitctl --user start {SERVICE_NAME}"),
         "dinitctl",
         ["--user", "start", SERVICE_NAME],
-    ))
+    )
 }
 
-pub fn disable_now_command() -> Option<CommandSpec> {
-    Some(stop_ignoring_unstarted())
+pub fn disable_now_command() -> CommandSpec {
+    stop_ignoring_unstarted()
 }
 
-pub fn stop_for_reinstall_command() -> Option<CommandSpec> {
-    Some(stop_ignoring_unstarted())
+pub fn stop_for_reinstall_command() -> CommandSpec {
+    stop_ignoring_unstarted()
 }
 
 pub fn hyprland_startup_commands(import_vars: &[&str]) -> Vec<String> {

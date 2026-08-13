@@ -1,21 +1,5 @@
 //! `UnixNotis` installer entrypoint with a ratatui-driven flow
 
-#![expect(
-    clippy::collapsible_else_if,
-    clippy::items_after_statements,
-    clippy::match_same_arms,
-    clippy::missing_const_for_fn,
-    clippy::needless_continue,
-    clippy::needless_pass_by_value,
-    clippy::option_if_let_else,
-    clippy::redundant_else,
-    clippy::ref_option,
-    clippy::similar_names,
-    clippy::too_many_lines,
-    clippy::unnecessary_wraps,
-    reason = "reviewed installer state-machine, backend, and TUI boundaries keep explicit control flow for auditable lifecycle behavior"
-)]
-
 mod actions;
 mod app;
 mod checks;
@@ -24,16 +8,18 @@ mod detect;
 mod managed_binaries;
 mod model;
 mod paths;
+mod privilege;
 mod release;
-mod safe_write;
 mod service_manager;
 mod system_tools;
 mod terminal;
 #[cfg(test)]
 #[path = "tests/support/mod.rs"]
 mod test_support;
+pub(crate) mod toolchain;
 mod trial;
 mod ui;
+mod write_target;
 
 use anyhow::Result;
 
@@ -44,6 +30,9 @@ use crate::terminal::TerminalGuard;
 use crate::trial::run_trial;
 
 fn main() -> Result<()> {
+    // Root execution turns user-controlled paths into privileged mutation targets
+    privilege::reject_root_install(rustix::process::geteuid().as_raw())?;
+
     let cli = match cli::parse_env_args()? {
         CliAction::Run(args) => args,
         CliAction::Help => {
@@ -62,7 +51,7 @@ fn main() -> Result<()> {
 
     match exit_action {
         Ok(ExitAction::None) => Ok(()),
-        Ok(ExitAction::RunTrial { repo_root }) => run_trial(repo_root),
+        Ok(ExitAction::RunTrial { repo_root }) => run_trial(&repo_root),
         Err(err) => Err(err),
     }
 }

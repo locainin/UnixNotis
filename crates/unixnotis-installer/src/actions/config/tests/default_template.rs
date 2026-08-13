@@ -1,8 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::provision::{render_default_config_toml, write_default_scripts};
-use unixnotis_core::Config;
+use unixnotis_core::{render_default_config_toml, Config};
 
 #[test]
 fn default_config_template_documents_panel_height_modes() {
@@ -13,6 +12,14 @@ fn default_config_template_documents_panel_height_modes() {
     assert!(!config_toml
         .lines()
         .any(|line| line.trim() == "height_override = 1487"));
+}
+
+#[test]
+fn default_config_template_documents_reduced_motion() {
+    let config_toml = render_default_config_toml(&Config::default()).expect("render config");
+
+    assert!(config_toml.contains("# Disable panel animation and moving text"));
+    assert!(config_toml.contains("reduced_motion = false"));
 }
 
 #[test]
@@ -32,9 +39,9 @@ fn default_config_template_uses_shipped_night_scripts() {
 
     // The default config stays functional while backend logic lives in editable scripts
     assert!(night_block.contains("enabled = true"));
-    assert!(night_block.contains("state_cmd = \"scripts/unixnotis-blue-light-state\""));
-    assert!(night_block.contains("on_cmd = \"scripts/unixnotis-blue-light-on\""));
-    assert!(night_block.contains("off_cmd = \"scripts/unixnotis-blue-light-off\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-state\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-on\""));
+    assert!(night_block.contains("program = \"scripts/unixnotis-blue-light-off\""));
     assert!(!night_block.contains("gammastep"));
     assert!(!night_block.contains("hyprsunset"));
     assert!(!night_block.contains("wlsunset"));
@@ -64,7 +71,7 @@ fn write_default_scripts_creates_executable_helpers() {
     ));
     let _ = fs::remove_dir_all(&root);
 
-    write_default_scripts(&root).expect("write default scripts");
+    Config::write_default_scripts_in(&root).expect("write default scripts");
 
     for script in unixnotis_core::DEFAULT_SCRIPTS {
         let path = root.join(script.relative_path);

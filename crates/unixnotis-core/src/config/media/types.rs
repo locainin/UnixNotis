@@ -72,6 +72,11 @@ pub struct MediaConfig {
     pub denylist: Vec<String>,
     /// Controls which players may trigger remote media artwork fetches
     pub remote_art_policy: MediaRemoteArtPolicy,
+    /// Controls which players may use local file paths for artwork
+    pub local_art_policy: MediaLocalArtPolicy,
+    /// Exact executable paths allowed for local artwork (device/inode verified)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_art_executable_allowlist: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
@@ -84,6 +89,18 @@ pub enum MediaRemoteArtPolicy {
     NativeOnly,
     /// Allow remote artwork for browsers too
     BrowsersToo,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaLocalArtPolicy {
+    /// Disable local artwork fetches for every player
+    Disabled,
+    /// Allow local artwork only for players whose executable matches the allowlist
+    ExactExecutableOnly,
+    /// Allow local artwork for all admitted players
+    #[default]
+    AllAdmitted,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Eq, PartialEq)]

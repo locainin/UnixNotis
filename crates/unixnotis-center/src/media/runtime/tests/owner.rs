@@ -1,12 +1,12 @@
 use super::super::owner::{
-    apply_owner_change, owner_is_unchanged, owner_rebuild_outcome,
+    apply_owner_change, owner_is_duplicate, owner_is_unchanged, owner_rebuild_outcome,
     replacement_removal_needs_snapshot, OwnerChangeOutcome,
 };
 use super::super::state::MediaRuntimeState;
 use super::support::receive_ui_event;
 use crate::control::UiEvent;
-use crate::media::mpris::tests::support::{MprisFixture, TEST_PLAYER_NAME};
-use crate::media::mpris::{build_player_state, fetch_media_info};
+use crate::media::mpris::fetch_media_info;
+use crate::media::mpris::tests::support::{build_player_state, MprisFixture, TEST_PLAYER_NAME};
 use unixnotis_core::MediaConfig;
 
 async fn live_runtime_state(fixture: &MprisFixture) -> MediaRuntimeState {
@@ -48,6 +48,28 @@ fn stable_owner_rebuild_does_not_publish_an_empty_replacement_snapshot() {
 
     assert_eq!(outcome, OwnerChangeOutcome::Applied);
     assert!(!replacement_removal_needs_snapshot(true, outcome));
+}
+
+#[test]
+fn owner_duplicate_check_requires_a_different_name_and_same_owner() {
+    assert!(owner_is_duplicate(
+        "org.mpris.MediaPlayer2.one",
+        "org.mpris.MediaPlayer2.two",
+        Some(":1.42"),
+        Some(":1.42"),
+    ));
+    assert!(!owner_is_duplicate(
+        "org.mpris.MediaPlayer2.one",
+        "org.mpris.MediaPlayer2.one",
+        Some(":1.42"),
+        Some(":1.42"),
+    ));
+    assert!(!owner_is_duplicate(
+        "org.mpris.MediaPlayer2.one",
+        "org.mpris.MediaPlayer2.two",
+        Some(":1.42"),
+        Some(":1.43"),
+    ));
 }
 
 #[tokio::test]
@@ -161,4 +183,27 @@ async fn duplicate_owner_change_preserves_existing_player() {
     assert_eq!(outcome, OwnerChangeOutcome::Applied);
     assert!(state.players.contains_key(TEST_PLAYER_NAME));
     assert!(event_rx.is_empty());
+}
+
+#[tokio::test]
+async fn replacement_owner_change_defers_full_probe_to_coalesced_refresh() {
+    let fixture = MprisFixture::start().await;
+    let (signal_tx, _signal_rx) = tokio::sync::mpsc::channel(4);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    let mut state = live_runtime_state(&fixture).await;
+
+    let outcome = apply_owner_change(
+        TEST_PLAYER_NAME,
+        Some(":1.replacement"),
+        &fixture.client,
+        &MediaConfig::default(),
+        &signal_tx,
+        &mut state,
+        &event_tx,
+    )
+    .await
+    .expect("defer replacement probe");
+
+    assert_eq!(outcome, OwnerChangeOutcome::RetryNeeded);
+    assert!(state.players.is_empty());
 }

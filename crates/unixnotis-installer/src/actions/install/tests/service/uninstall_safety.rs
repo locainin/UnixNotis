@@ -72,6 +72,37 @@ fn uninstall_does_not_remove_non_matching_symlink() {
 }
 
 #[test]
+fn uninstall_rejects_symlinked_parent_for_symlink_artifact() {
+    let root = test_root("install-service-keep-linked-symlink-parent");
+    let outside = root.join("outside");
+    let linked_parent = root.join("linked-parent");
+    let outside_link = outside.join("service-link");
+    fs::create_dir_all(&outside).expect("make outside directory");
+    symlink("service", &outside_link).expect("create outside service link");
+    symlink(&outside, &linked_parent).expect("link service parent");
+    let artifact = ServiceArtifact {
+        path: linked_parent.join("service-link"),
+        kind: ServiceArtifactKind::Symlink {
+            target: "service".into(),
+        },
+        contents: None,
+        mode: None,
+    };
+
+    remove_service_artifact(&artifact).expect_err("linked parent should be rejected");
+
+    assert_eq!(
+        fs::read_link(&outside_link).expect("outside service link remains"),
+        std::path::PathBuf::from("service")
+    );
+    assert!(fs::symlink_metadata(linked_parent)
+        .expect("parent link remains")
+        .file_type()
+        .is_symlink());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn uninstall_rejects_symlink_file_artifact() {
     let root = test_root("install-service-keep-file-symlink");
     fs::create_dir_all(&root).expect("make root");
@@ -92,6 +123,35 @@ fn uninstall_rejects_symlink_file_artifact() {
     // File artifacts reject final-path symlinks instead of unlinking them silently
     assert!(err.to_string().contains("refusing to remove symlink"));
     assert_eq!(fs::read_link(&link).expect("link should remain"), target);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_symlinked_parent_for_file_artifact() {
+    let root = test_root("install-service-keep-linked-file-parent");
+    let outside = root.join("outside");
+    let linked_parent = root.join("linked-parent");
+    let outside_file = outside.join("service-file");
+    fs::create_dir_all(&outside).expect("make outside directory");
+    fs::write(&outside_file, "service").expect("write outside service file");
+    symlink(&outside, &linked_parent).expect("link service parent");
+    let artifact = ServiceArtifact {
+        path: linked_parent.join("service-file"),
+        kind: ServiceArtifactKind::File,
+        contents: Some("service".to_string()),
+        mode: None,
+    };
+
+    remove_service_artifact(&artifact).expect_err("linked parent should be rejected");
+
+    assert_eq!(
+        fs::read_to_string(outside_file).expect("outside service file remains"),
+        "service"
+    );
+    assert!(fs::symlink_metadata(linked_parent)
+        .expect("parent link remains")
+        .file_type()
+        .is_symlink());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -168,7 +228,7 @@ fn uninstall_rejects_symlink_inside_managed_directory() {
     let err = remove_service_artifact(&artifact).expect_err("child link should be rejected");
 
     // The full error chain carries the child-link refusal below the outer removal context
-    assert!(format!("{err:#}").contains("refusing symlink inside managed service directory"));
+    assert!(format!("{err:#}").contains("refusing unsafe entry inside directory tree"));
     assert_eq!(
         fs::read_link(&child_link).expect("child link should remain untouched"),
         target
@@ -202,11 +262,36 @@ fn uninstall_rejects_socket_inside_managed_directory() {
     let err = remove_service_artifact(&artifact).expect_err("socket child should be rejected");
 
     // The recursive remover fails closed and does not delete the containing service directory
-    assert!(format!("{err:#}").contains("refusing special file inside managed service directory"));
+    assert!(format!("{err:#}").contains("refusing unsafe entry inside directory tree"));
     assert!(fs::symlink_metadata(&socket_path)
         .expect("socket child should remain")
         .file_type()
         .is_socket());
     assert!(service_dir.exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn uninstall_rejects_symlinked_parent_for_directory_artifact() {
+    let root = test_root("install-service-keep-linked-directory-parent");
+    let outside = root.join("outside");
+    let linked_parent = root.join("linked-parent");
+    let outside_directory = outside.join("service-directory");
+    fs::create_dir_all(&outside_directory).expect("make outside service directory");
+    symlink(&outside, &linked_parent).expect("link service parent");
+    let artifact = ServiceArtifact {
+        path: linked_parent.join("service-directory"),
+        kind: ServiceArtifactKind::Directory,
+        contents: None,
+        mode: None,
+    };
+
+    remove_service_artifact(&artifact).expect_err("linked parent should be rejected");
+
+    assert!(outside_directory.exists());
+    assert!(fs::symlink_metadata(linked_parent)
+        .expect("parent link remains")
+        .file_type()
+        .is_symlink());
     let _ = fs::remove_dir_all(&root);
 }

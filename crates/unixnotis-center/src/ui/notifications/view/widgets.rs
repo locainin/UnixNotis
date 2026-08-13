@@ -4,7 +4,6 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use async_channel::Sender;
 use gtk::prelude::*;
@@ -15,9 +14,9 @@ use tracing::debug;
 use crate::control::{UiCommand, UiEvent};
 
 use super::item::{RowData, RowItem, RowKind};
-use super::row::group::{build_group_row, update_group_row, GroupRowWidgets};
+use super::row::group::{build_group_row, clear_group_identity, update_group_row, GroupRowWidgets};
 use super::row::notification::{
-    build_notification_row, update_notification_row, NotificationRowWidgets,
+    build_notification_row, clear_notification_row, update_notification_row, NotificationRowWidgets,
 };
 use crate::ui::icons::IconResolver;
 
@@ -31,9 +30,13 @@ pub(super) struct RowWidgets {
     command_tx: mpsc::Sender<UiCommand>,
 }
 
-fn row_widgets_quark() -> gtk::glib::Quark {
-    static QUARK: OnceLock<gtk::glib::Quark> = OnceLock::new();
-    *QUARK.get_or_init(|| gtk::glib::Quark::from_str("unixnotis-row-widgets"))
+// Weak item references prevent destroyed list items from keeping entries alive
+// Strong widget bundles preserve the factory's reusable row tree between binds
+const MAX_TRACKED_ROW_WIDGETS: usize = 4096;
+
+thread_local! {
+    static ROW_WIDGETS: RefCell<Vec<(gtk::glib::WeakRef<gtk::ListItem>, Rc<RowWidgets>)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 impl RowWidgets {
@@ -89,8 +92,15 @@ impl RowWidgets {
         }
     }
 
-    pub(super) fn unbind(&self) {
+    pub(super) fn unbind(&self, icon_resolver: &IconResolver) {
         self.disconnect();
+        if let Some(group) = &self.group {
+            // Unbind is a real ownership boundary even when no empty model update arrives
+            clear_group_identity(group, icon_resolver);
+        }
+        if let Some(notification) = &self.notification {
+            clear_notification_row(notification, icon_resolver);
+        }
     }
 
     fn disconnect(&self) {
@@ -141,20 +151,34 @@ pub(super) fn set_row_widgets(item: &gtk::ListItem, widgets: Rc<RowWidgets>) {
     // Attach the actual row root whenever the cached widget bundle changes
     // Setup also uses this so GTK never keeps an empty placeholder child
     item.set_child(Some(&widgets.root));
-    unsafe {
-        // SAFETY: gtk::ListItem stays on the GTK main thread and never crosses threads
-        // RowWidgets uses Rc and is only accessed from list factory callbacks on the
-        // main thread. Data is replaced in ensure_row_widgets when the row kind changes
-        // and otherwise kept to let GTK reuse the row widgets across scroll events
-        item.set_qdata(row_widgets_quark(), widgets);
-    }
+    ROW_WIDGETS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        if let Some((_, existing)) = entries
+            .iter_mut()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *item))
+        {
+            *existing = widgets;
+        } else {
+            entries.push((item.downgrade(), widgets));
+        }
+        // Keep a bounded fallback for unusual list-model churn before another cache access
+        if entries.len() > MAX_TRACKED_ROW_WIDGETS {
+            let excess = entries.len() - MAX_TRACKED_ROW_WIDGETS;
+            entries.drain(..excess);
+        }
+    });
 }
 
 pub(super) fn get_row_widgets(item: &gtk::ListItem) -> Option<Rc<RowWidgets>> {
-    // SAFETY: The stable quark is written with Rc<RowWidgets> on the GTK main thread only
-    let stored = unsafe { item.qdata::<Rc<RowWidgets>>(row_widgets_quark()) }?;
-    // SAFETY: Gtk owns the qdata value while the list item remains alive
-    Some(unsafe { stored.as_ref().clone() })
+    ROW_WIDGETS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        entries
+            .iter()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *item))
+            .map(|(_, widgets)| widgets.clone())
+    })
 }
 
 #[cfg(test)]

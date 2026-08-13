@@ -1,6 +1,6 @@
-use unixnotis_core::{MediaConfig, MediaRemoteArtPolicy};
+use unixnotis_core::{MediaConfig, MediaLocalArtPolicy, MediaRemoteArtPolicy};
 
-use super::super::admission::{detect_browser_family, remote_art_allowed};
+use super::super::admission::{detect_browser_family, local_art_allowed, remote_art_allowed};
 use super::super::is_allowed_player;
 
 #[test]
@@ -104,5 +104,73 @@ fn remote_art_admission_keeps_browsers_opt_in_and_requires_an_owner() {
         None,
         None,
         MediaRemoteArtPolicy::BrowsersToo
+    ));
+}
+
+#[test]
+fn local_art_admission_rejects_browsers_and_requires_an_owner() {
+    // Browser with owner executable should be rejected
+    assert!(!local_art_allowed(
+        Some("firefox"),
+        Some("/usr/bin/firefox"),
+        false,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+    ));
+
+    // Non-browser without allowlist match should be rejected
+    assert!(!local_art_allowed(
+        None,
+        Some("/usr/bin/spotify"),
+        false,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+    ));
+
+    // Non-browser without owner executable should be rejected
+    assert!(!local_art_allowed(
+        None,
+        None,
+        false,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+    ));
+}
+
+#[test]
+fn local_art_admission_requires_verified_executable_evidence() {
+    // A verified descriptor comparison is the only exact-policy admission proof
+    assert!(local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        true,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+    ));
+
+    // A path hint without descriptor proof remains denied
+    assert!(!local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        false,
+        MediaLocalArtPolicy::ExactExecutableOnly,
+    ));
+}
+
+#[test]
+fn all_admitted_native_art_still_requires_a_stable_owner() {
+    assert!(local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        true,
+        MediaLocalArtPolicy::AllAdmitted,
+    ));
+    assert!(!local_art_allowed(
+        None,
+        Some("/usr/bin/player"),
+        false,
+        MediaLocalArtPolicy::AllAdmitted,
+    ));
+    assert!(!local_art_allowed(
+        Some("chromium"),
+        Some("/usr/bin/chromium"),
+        true,
+        MediaLocalArtPolicy::AllAdmitted,
     ));
 }

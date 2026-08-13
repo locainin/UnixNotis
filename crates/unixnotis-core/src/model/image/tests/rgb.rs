@@ -1,6 +1,4 @@
 use super::super::rgb::expand_rgb_row_scalar;
-#[cfg(target_arch = "x86_64")]
-use super::super::rgb::expand_rgb_row_ssse3;
 use super::super::{ImageData, NotificationImage, MAX_IMAGE_BYTES};
 
 #[test]
@@ -81,22 +79,4 @@ fn scalar_rgb_expansion_writes_expected_alpha_bytes() {
     expand_rgb_row_scalar(&[1, 2, 3, 4, 5, 6], &mut out);
 
     assert_eq!(out, vec![1, 2, 3, 255, 4, 5, 6, 255]);
-}
-
-#[cfg(target_arch = "x86_64")]
-#[test]
-fn ssse3_rgb_expansion_matches_scalar_when_supported() {
-    if !std::is_x86_feature_detected!("ssse3") {
-        return;
-    }
-
-    let src = [1_u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-    let mut scalar = vec![0; src.len() / 3 * 4];
-    let mut simd = vec![0; scalar.len()];
-
-    expand_rgb_row_scalar(&src, &mut scalar);
-    // SAFETY: The test is guarded by the same runtime feature probe as production
-    unsafe { expand_rgb_row_ssse3(&src, &mut simd) };
-
-    assert_eq!(simd, scalar);
 }

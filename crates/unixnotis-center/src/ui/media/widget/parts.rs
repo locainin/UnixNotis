@@ -6,7 +6,7 @@ use gtk::prelude::*;
 use gtk::{Align, Overflow, PolicyType};
 
 use crate::media::MediaHandle;
-use crate::ui::panel::input::ClickCooldown;
+use crate::ui::panel::behavior::input::ClickCooldown;
 
 use super::super::artwork::MediaArtState;
 use super::super::marquee::MarqueeLabel;
@@ -135,7 +135,7 @@ fn build_art_picture(art_size_px: i32) -> gtk::Picture {
     art.add_css_class(hooks::media_shell::ART);
     art.set_can_shrink(true);
     art.set_size_request(art_size_px, art_size_px);
-    art.set_keep_aspect_ratio(true);
+    art.set_content_fit(gtk::ContentFit::Contain);
     art.set_hexpand(false);
     art.set_vexpand(false);
     art.set_halign(Align::Center);

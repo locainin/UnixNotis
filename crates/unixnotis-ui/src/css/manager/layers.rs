@@ -14,6 +14,8 @@ pub enum CssProviderLayer {
     Widgets,
     /// MPRIS media card layer
     Media,
+    /// Internal reduced-motion policy loaded above editable theme layers
+    MotionPolicy,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

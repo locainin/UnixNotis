@@ -12,6 +12,12 @@ use super::model::UiState;
 impl UiState {
     pub fn handle_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::Disconnected => {
+                debug!("UnixNotis control service disconnected");
+                self.control_state = ControlState::default();
+                self.hidden_popups.clear();
+                self.reconcile_seed(Vec::new());
+            }
             UiEvent::Seed { state, active } => {
                 // Seed is daemon truth, so filtering uses the newest gate state
                 self.control_state = state;
@@ -35,9 +41,17 @@ impl UiState {
                 );
                 self.update_popup(notification, show_popup);
             }
-            UiEvent::NotificationClosed(id, _reason) => {
-                debug!(id, "popup closed");
-                self.remove_popup(id);
+            UiEvent::NotificationClosed(key, _reason) => {
+                debug!(id = key.id, generation = key.generation, "popup closed");
+                self.remove_popup_if_generation(key);
+            }
+            UiEvent::PopupHidden(key) => {
+                debug!(
+                    id = key.id,
+                    generation = key.generation,
+                    "popup banner hidden"
+                );
+                self.hide_popup_if_generation(key);
             }
             UiEvent::PopupGateChanged(gate) => {
                 // Gate updates change only policy fields and preserve unrelated daemon state

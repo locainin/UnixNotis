@@ -5,15 +5,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc::SyncSender, Arc};
 
 use crate::app::events::UiMessage;
-use crate::detect::Detection;
 use crate::model::ActionMode;
 use crate::paths::InstallPaths;
 
-use super::install_state::InstallState;
+use super::install::InstallState;
 
 pub struct ActionContext<'a> {
-    // Read-only compatibility snapshot collected before the action begins
-    pub detection: &'a Detection,
     // All filesystem and service-manager paths for the selected backend
     pub paths: &'a InstallPaths,
     // Cached install state keeps the progress view aligned with the selected action

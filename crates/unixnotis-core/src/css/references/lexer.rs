@@ -1,40 +1,41 @@
 //! CSS identifier, escape, comment, and whitespace primitives
 
-pub(super) fn consume_identifier(input: &str, start: usize) -> (String, usize) {
+pub(super) fn identifier_matches(input: &str, start: usize, expected: &str) -> (bool, usize) {
     let bytes = input.as_bytes();
-    let mut decoded = String::new();
+    let expected = expected.as_bytes();
+    let mut matched = true;
+    let mut decoded_len = 0usize;
     let mut index = start;
 
-    // A source byte can be visited at most once during a valid identifier scan
+    // Security scanners recognize a small fixed vocabulary without allocating every identifier
     for _ in 0..bytes.len().saturating_add(1) {
         let Some(&byte) = bytes.get(index) else {
             break;
         };
-        if is_name_byte(byte) {
-            if byte.is_ascii() {
-                decoded.push(char::from(byte));
-                index = index.saturating_add(1);
+        let (decoded, next_index) = if is_name_byte(byte) {
+            let decoded = if byte.is_ascii() {
+                char::from(byte)
             } else {
-                // Non-ASCII name characters are copied by scalar value
-                let ch = input[index..].chars().next().unwrap_or('\u{FFFD}');
-                decoded.push(ch);
-                index = index.saturating_add(ch.len_utf8());
-            }
-            continue;
+                input[index..].chars().next().unwrap_or('\u{FFFD}')
+            };
+            (decoded, index.saturating_add(decoded.len_utf8()))
+        } else if valid_escape(bytes, index) {
+            consume_escape(input, index)
+        } else {
+            break;
+        };
+
+        if next_index <= index {
+            break;
         }
-        if byte == b'\\' && valid_escape(bytes, index) {
-            let (ch, next_index) = consume_escape(input, index);
-            if next_index <= index {
-                break;
-            }
-            decoded.push(ch);
-            index = next_index;
-            continue;
-        }
-        break;
+        matched &= expected
+            .get(decoded_len)
+            .is_some_and(|expected| decoded.eq_ignore_ascii_case(&char::from(*expected)));
+        decoded_len = decoded_len.saturating_add(1);
+        index = next_index;
     }
 
-    (decoded, index)
+    (matched && decoded_len == expected.len(), index)
 }
 
 pub(super) fn consume_escape(input: &str, slash_index: usize) -> (char, usize) {
@@ -90,12 +91,38 @@ pub(super) fn skip_css_whitespace_and_comments(bytes: &[u8], mut index: usize) -
 
 pub(super) fn skip_css_whitespace(bytes: &[u8], mut index: usize) -> usize {
     for _ in 0..bytes.len().saturating_add(1) {
-        if !bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
+        if !bytes
+            .get(index)
+            .is_some_and(|byte| is_css_whitespace(*byte))
+        {
             break;
         }
         index = index.saturating_add(1);
     }
     index
+}
+
+pub(super) fn trim_css_whitespace_range(
+    bytes: &[u8],
+    mut start: usize,
+    mut end: usize,
+) -> (usize, usize) {
+    while start < end
+        && bytes
+            .get(start)
+            .is_some_and(|byte| is_css_whitespace(*byte))
+    {
+        start = start.saturating_add(1);
+    }
+    while end > start
+        && end
+            .checked_sub(1)
+            .and_then(|index| bytes.get(index))
+            .is_some_and(|byte| is_css_whitespace(*byte))
+    {
+        end = end.saturating_sub(1);
+    }
+    (start, end)
 }
 
 pub(super) fn skip_quoted_value(input: &str, start: usize) -> Option<usize> {
@@ -157,6 +184,10 @@ const fn is_name_byte(byte: u8) -> bool {
     is_name_start_byte(byte) || byte.is_ascii_digit() || byte == b'-'
 }
 
+const fn is_css_whitespace(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' ')
+}
+
 pub(super) const fn utf8_char_len(first_byte: u8) -> usize {
     match first_byte {
         0x00..=0x7f => 1,
@@ -171,7 +202,7 @@ fn consume_escape_terminator(bytes: &[u8], index: usize) -> usize {
         Some(b'\r') if bytes.get(index.saturating_add(1)) == Some(&b'\n') => {
             index.saturating_add(2)
         }
-        Some(byte) if byte.is_ascii_whitespace() => index.saturating_add(1),
+        Some(byte) if is_css_whitespace(*byte) => index.saturating_add(1),
         _ => index,
     }
 }

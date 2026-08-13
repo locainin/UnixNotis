@@ -2,8 +2,7 @@ use super::lint::test_support::lint_css_contents;
 use super::parse::{parse_css_declarations, split_selectors};
 use super::runtime::panel_width_floor_warning;
 use unixnotis_core::{
-    build_modern_theme_custom_properties, gtk_css_features_for_version, Config, ThemeConfig,
-    PANEL_RUNTIME_WIDTH_MIN,
+    build_modern_theme_custom_properties, Config, ThemeConfig, PANEL_RUNTIME_WIDTH_MIN,
 };
 
 #[path = "files.rs"]
@@ -80,10 +79,7 @@ fn lint_css_contents_warns_on_web_length_tokens_in_layout_props() {
 fn lint_css_contents_accepts_generated_modern_theme_tokens() {
     let css = format!(
         "{}\n.unixnotis-panel-card {{ border-radius: var(--unixnotis-card-radius); padding: calc(var(--unixnotis-panel-card-padding-y) + 2px) var(--unixnotis-panel-card-padding-x); }}",
-        build_modern_theme_custom_properties(
-            &ThemeConfig::default(),
-            gtk_css_features_for_version(4, 16),
-        )
+        build_modern_theme_custom_properties(&ThemeConfig::default())
     );
 
     let warnings = lint_css_contents(&css);

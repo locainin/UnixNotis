@@ -2,28 +2,27 @@
 //!
 //! Encapsulates cache storage and keying logic used by the icon resolver
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use gtk::gdk::{Paintable, Texture};
 use gtk::prelude::*;
 use gtk::IconPaintable;
-use unixnotis_core::NotificationImage;
 
 const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_TRACKED_IMAGE_KEYS: usize = 4096;
+
+// Weak image references let destroyed images disappear on the next cache access
+// A key is retained only while its image can still be upgraded
+thread_local! {
+    static IMAGE_KEYS: RefCell<Vec<(gtk::glib::WeakRef<gtk::Image>, IconKey)>> =
+        const { RefCell::new(Vec::new()) };
+}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum IconKey {
-    ImageData {
-        hash: [u8; 32],
-        len: usize,
-        width: i32,
-        height: i32,
-        size: i32,
-        scale: i32,
-    },
     Path {
         path: PathBuf,
         size: i32,
@@ -39,34 +38,9 @@ pub(super) enum IconKey {
 impl IconKey {
     pub(super) const fn size_and_scale(&self) -> (i32, i32) {
         match self {
-            Self::ImageData { size, scale, .. }
-            | Self::Path { size, scale, .. }
-            | Self::Name { size, scale, .. } => (*size, *scale),
+            Self::Path { size, scale, .. } | Self::Name { size, scale, .. } => (*size, *scale),
         }
     }
-}
-
-pub(super) fn icon_key_for_image(
-    image: &NotificationImage,
-    size: i32,
-    scale: i32,
-) -> Option<IconKey> {
-    if !image.has_image_data {
-        return None;
-    }
-    let data = &image.image_data;
-    if data.data.is_empty() {
-        return None;
-    }
-    let hash = hash_image_data(&data.data);
-    Some(IconKey::ImageData {
-        hash,
-        len: data.data.len(),
-        width: data.width,
-        height: data.height,
-        size,
-        scale,
-    })
 }
 
 pub(super) fn icon_key_for_path(path: &Path, size: i32, scale: i32) -> Option<IconKey> {
@@ -98,31 +72,47 @@ pub(super) fn icon_key_for_name(name: &str, size: i32, scale: i32) -> Option<Ico
     })
 }
 
-fn hash_image_data(data: &[u8]) -> [u8; 32] {
-    // Notification image payloads are already bounded, so hashing every byte keeps cache identity exact
-    *blake3::hash(data).as_bytes()
-}
-
 pub(super) fn set_image_key(image: &gtk::Image, key: IconKey) {
-    unsafe {
-        // SAFETY: gtk::Image is main-thread only; the quark/type pairing is stable
-        image.set_qdata(icon_key_quark(), key);
-    }
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        if let Some((_, existing)) = entries
+            .iter_mut()
+            .find(|(weak, _)| weak.upgrade().is_some_and(|current| current == *image))
+        {
+            *existing = key;
+        } else {
+            entries.push((image.downgrade(), key));
+        }
+        // A dead weak reference is normally removed on the next access. Keep a hard
+        // cap as a second line of defense when images stop being accessed entirely
+        if entries.len() > MAX_TRACKED_IMAGE_KEYS {
+            let excess = entries.len() - MAX_TRACKED_IMAGE_KEYS;
+            entries.drain(..excess);
+        }
+    });
 }
 
 pub(super) fn image_key_matches(image: &gtk::Image, key: &IconKey) -> bool {
-    // SAFETY: The stable quark is written with IconKey values only on the GTK main thread
-    let stored = unsafe { image.qdata::<IconKey>(icon_key_quark()) };
-    let Some(stored) = stored else {
-        return false;
-    };
-    // SAFETY: Gtk owns the qdata value for at least as long as this image reference
-    unsafe { stored.as_ref() == key }
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| weak.upgrade().is_some());
+        entries.iter().any(|(weak, stored)| {
+            weak.upgrade().is_some_and(|current| current == *image) && stored == key
+        })
+    })
 }
 
-fn icon_key_quark() -> gtk::glib::Quark {
-    static QUARK: OnceLock<gtk::glib::Quark> = OnceLock::new();
-    *QUARK.get_or_init(|| gtk::glib::Quark::from_str("unixnotis-icon-key"))
+pub(super) fn clear_image_key(image: &gtk::Image) {
+    IMAGE_KEYS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(weak, _)| {
+            let Some(current) = weak.upgrade() else {
+                return false;
+            };
+            current != *image
+        });
+    });
 }
 
 #[cfg(test)]
