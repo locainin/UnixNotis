@@ -1,54 +1,49 @@
-use std::cell::Cell;
+use std::str::FromStr;
 
-use anyhow::Result;
-
-use crate::cli::{Command, PresetCommand};
+use crate::cli::{Command, DndDuration, DndState, DoctorCommand, DoctorServiceManagerArg};
 
 use super::local::handle_local_command;
+use super::runner::{run_async, run_command};
 
 #[test]
-fn handle_local_command_runs_css_check_branch() {
-    let css_called = Cell::new(false);
+fn async_doctor_report_fails_closed_in_sync_local_dispatcher() {
+    let command = Command::Doctor {
+        command: None,
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
+    };
+    let error = handle_local_command(command)
+        .expect_err("async doctor report must fail in synchronous dispatcher");
 
-    handle_local_command(
-        Command::CssCheck { config: None },
-        |config| {
-            assert!(config.is_none());
-            css_called.set(true);
-            Ok(())
-        },
-        |_| -> Result<()> { panic!("preset runner should not be called for css check") },
-        |_| -> Result<()> { panic!("session runner should not be called for css check") },
-        |_| -> Result<()> { panic!("theme runner should not be called for css check") },
-    )
-    .expect("css check should dispatch");
-
-    assert!(css_called.get());
+    assert!(error.to_string().contains("internal routing error"));
 }
 
 #[test]
-fn handle_local_command_runs_preset_branch_with_command_payload() {
-    let preset_called = Cell::new(false);
+fn run_command_validates_semantics_before_starting_any_runtime_work() {
+    let command = Command::Dnd {
+        state: DndState::Off,
+        for_duration: Some(DndDuration::from_str("30m").expect("valid duration")),
+        until: None,
+    };
+    let error = run_command(command).expect_err("invalid DND command must fail before dispatch");
 
-    handle_local_command(
-        Command::Preset {
-            command: PresetCommand::Inspect {
-                input: "theme.unixnotis".to_string(),
-            },
-        },
-        |_| -> Result<()> { panic!("css runner should not be called for preset command") },
-        |command| {
-            let PresetCommand::Inspect { input } = command else {
-                panic!("expected inspect preset command");
-            };
-            assert_eq!(input, "theme.unixnotis");
-            preset_called.set(true);
-            Ok(())
-        },
-        |_| -> Result<()> { panic!("session runner should not be called for preset command") },
-        |_| -> Result<()> { panic!("theme runner should not be called for preset command") },
-    )
-    .expect("preset should dispatch");
+    assert!(error.to_string().contains("valid only with `dnd on`"));
+}
 
-    assert!(preset_called.get());
+#[tokio::test]
+async fn doctor_repair_fails_closed_in_async_dispatcher() {
+    let command = Command::Doctor {
+        command: Some(DoctorCommand::RepairSession),
+        json: false,
+        verbose: false,
+        service_manager: DoctorServiceManagerArg::Auto,
+        config: None,
+    };
+    let error = run_async(command)
+        .await
+        .expect_err("synchronous repair must fail in async dispatcher");
+
+    assert!(error.to_string().contains("internal routing error"));
 }

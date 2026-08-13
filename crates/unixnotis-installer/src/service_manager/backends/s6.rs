@@ -130,7 +130,7 @@ pub fn hyprland_startup_commands(
     _live_dir: &Path,
     _import_vars: &[&str],
 ) -> Vec<String> {
-    vec!["noticenterctl sync-session-environment --service-manager s6".to_string()]
+    vec!["noticenterctl doctor repair-session --service-manager s6".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {

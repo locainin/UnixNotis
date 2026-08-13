@@ -1,40 +1,71 @@
 use clap::Parser;
 use unixnotis_core::{PanelDebugLevel, INHIBIT_SCOPE_ALL, INHIBIT_SCOPE_POPUPS};
 
+use super::super::args::DebugLevelArg;
 use super::super::{
-    Args, Command, DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+    Args, Command, DevCommand, DndState, DoctorCommand, DoctorServiceManagerArg, InhibitScopeArg,
+    PresetCommand,
 };
 
 #[test]
-fn parses_open_panel_debug_default() {
-    // Ensures clap default_missing_value maps --debug to the Info level
-    let args =
-        Args::try_parse_from(["noticenterctl", "open-panel", "--debug"]).expect("parse args");
-    match args.command {
-        Command::OpenPanel { debug } => {
-            assert!(matches!(debug, Some(DebugLevelArg::Info)));
-        }
-        other => panic!("unexpected command: {other:?}"),
+fn parses_normal_open_panel_without_developer_options() {
+    let args = Args::try_parse_from(["noticenterctl", "open-panel"]).expect("parse open panel");
+    assert!(matches!(args.command, Command::OpenPanel));
+}
+
+#[test]
+fn parses_every_supported_dev_command() {
+    for level in ["critical", "warn", "info", "verbose"] {
+        let args = Args::try_parse_from(["noticenterctl", "dev", "open-panel", "--level", level])
+            .expect("parse developer panel command");
+        assert!(matches!(
+            args.command,
+            Command::Dev {
+                command: DevCommand::OpenPanel { .. }
+            }
+        ));
+    }
+
+    for arguments in [
+        vec!["noticenterctl", "dev", "refresh-applications"],
+        vec!["noticenterctl", "dev", "explain-notification", "42"],
+        vec!["noticenterctl", "dev", "dump-active"],
+        vec!["noticenterctl", "dev", "dump-history"],
+        vec!["noticenterctl", "dev", "logs"],
+    ] {
+        Args::try_parse_from(arguments).expect("developer command should parse");
     }
 }
 
 #[test]
-fn parses_refresh_applications() {
-    let args = Args::try_parse_from(["noticenterctl", "refresh-applications"])
-        .expect("refresh command should parse");
-    assert!(matches!(args.command, Command::RefreshApplications));
+fn dev_open_panel_defaults_to_info() {
+    let args = Args::try_parse_from(["noticenterctl", "dev", "open-panel"])
+        .expect("parse default developer panel command");
+    assert!(matches!(
+        args.command,
+        Command::Dev {
+            command: DevCommand::OpenPanel {
+                level: DebugLevelArg::Info
+            }
+        }
+    ));
 }
 
 #[test]
-fn parses_open_panel_debug_value() {
-    // Verifies explicit debug values map to the requested verbosity
-    let args = Args::try_parse_from(["noticenterctl", "open-panel", "--debug", "verbose"])
-        .expect("parse args");
-    match args.command {
-        Command::OpenPanel { debug } => {
-            assert!(matches!(debug, Some(DebugLevelArg::Verbose)));
-        }
-        other => panic!("unexpected command: {other:?}"),
+fn removed_root_interfaces_are_rejected_without_compatibility_aliases() {
+    for arguments in [
+        vec!["noticenterctl", "clear-all"],
+        vec!["noticenterctl", "refresh-applications"],
+        vec!["noticenterctl", "explain-notification", "42"],
+        vec!["noticenterctl", "sync-session-environment"],
+        vec!["noticenterctl", "open-panel", "--debug"],
+        vec!["noticenterctl", "list-active", "--full"],
+        vec!["noticenterctl", "list-history", "--full"],
+    ] {
+        assert!(
+            Args::try_parse_from(arguments.clone()).is_err(),
+            "removed interface unexpectedly parsed: {arguments:?}"
+        );
     }
 }
 
@@ -104,14 +135,12 @@ fn timed_dnd_options_conflict_and_require_on_state_semantically() {
 fn parses_explicit_clear_variants() {
     for (name, expected) in [
         ("clear", "clear"),
-        ("clear-all", "clear-all"),
         ("clear-active", "clear-active"),
         ("clear-history", "clear-history"),
     ] {
         let args = Args::try_parse_from(["noticenterctl", name]).expect("parse args");
         match (args.command, expected) {
             (Command::Clear, "clear")
-            | (Command::ClearAll, "clear-all")
             | (Command::ClearActive, "clear-active")
             | (Command::ClearHistory, "clear-history") => {}
             (other, _) => panic!("unexpected command: {other:?}"),
@@ -270,6 +299,7 @@ fn parses_doctor_output_and_service_manager_options() {
     assert!(matches!(
         args.command,
         Command::Doctor {
+            command: None,
             json: true,
             verbose: true,
             service_manager: DoctorServiceManagerArg::Dinit,
@@ -279,10 +309,11 @@ fn parses_doctor_output_and_service_manager_options() {
 }
 
 #[test]
-fn parses_session_environment_service_manager_without_shell_payloads() {
+fn parses_doctor_repair_session_service_manager_without_shell_payloads() {
     let args = Args::try_parse_from([
         "noticenterctl",
-        "sync-session-environment",
+        "doctor",
+        "repair-session",
         "--service-manager",
         "runit",
     ])
@@ -290,10 +321,44 @@ fn parses_session_environment_service_manager_without_shell_payloads() {
 
     assert!(matches!(
         args.command,
-        Command::SyncSessionEnvironment {
+        Command::Doctor {
+            command: Some(DoctorCommand::RepairSession),
             service_manager: DoctorServiceManagerArg::Runit,
+            json: false,
+            verbose: false,
+            config: None,
         }
     ));
+}
+
+#[test]
+fn doctor_repair_session_rejects_report_options_and_manual_service_mode() {
+    for arguments in [
+        vec!["noticenterctl", "doctor", "--json", "repair-session"],
+        vec!["noticenterctl", "doctor", "--verbose", "repair-session"],
+        vec![
+            "noticenterctl",
+            "doctor",
+            "--config",
+            "config.toml",
+            "repair-session",
+        ],
+        vec![
+            "noticenterctl",
+            "doctor",
+            "repair-session",
+            "--service-manager",
+            "manual",
+        ],
+    ] {
+        let command = Args::try_parse_from(arguments.clone())
+            .expect("syntax should parse before semantic validation")
+            .command;
+        assert!(
+            command.validate().is_err(),
+            "invalid repair options unexpectedly validated: {arguments:?}"
+        );
+    }
 }
 
 #[test]

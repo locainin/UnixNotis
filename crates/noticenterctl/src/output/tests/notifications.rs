@@ -1,7 +1,7 @@
 use unixnotis_core::{Action, NotificationImage, NotificationView};
 
 use super::{format_inhibitors, format_notifications};
-use crate::output::{allow_full_output, warn_full_requires_diagnostic};
+use crate::output::require_diagnostic_mode;
 
 fn sample_notification() -> NotificationView {
     // Bad bytes on purpose
@@ -60,17 +60,9 @@ fn format_inhibitors_sanitizes_reason_and_owner() {
 }
 
 #[test]
-fn full_output_requires_request_and_diagnostic_mode() {
-    assert!(allow_full_output(true, true));
-    assert!(!allow_full_output(true, false));
-    assert!(!allow_full_output(false, true));
-    assert!(!allow_full_output(false, false));
-}
+fn diagnostic_output_gate_requires_explicit_diagnostic_mode() {
+    assert!(require_diagnostic_mode(true).is_ok());
 
-#[test]
-fn full_output_warning_only_when_full_was_requested_without_diagnostic_mode() {
-    assert!(warn_full_requires_diagnostic(true, false));
-    assert!(!warn_full_requires_diagnostic(true, true));
-    assert!(!warn_full_requires_diagnostic(false, false));
-    assert!(!warn_full_requires_diagnostic(false, true));
+    let error = require_diagnostic_mode(false).expect_err("disabled mode must reject full output");
+    assert!(error.to_string().contains("UNIXNOTIS_DIAGNOSTIC=1"));
 }

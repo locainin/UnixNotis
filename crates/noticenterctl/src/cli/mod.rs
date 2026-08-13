@@ -4,9 +4,11 @@ mod args;
 mod command;
 mod dnd;
 
-pub use args::{Args, DndState, DoctorServiceManagerArg, PresetCommand, ThemeCommand};
-pub use args::{DebugLevelArg, InhibitScopeArg};
-pub use command::Command;
+pub use args::InhibitScopeArg;
+pub use args::{
+    Args, DevCommand, DndState, DoctorCommand, DoctorServiceManagerArg, PresetCommand, ThemeCommand,
+};
+pub use command::{Command, ExecutionKind};
 pub use dnd::{DndClockTime, DndDuration};
 
 #[cfg(test)]

@@ -68,6 +68,33 @@ pub enum DoctorServiceManagerArg {
     Manual,
 }
 
+#[derive(Subcommand, Debug)]
+pub enum DoctorCommand {
+    // Repair the daemon service environment for the active graphical session
+    RepairSession,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DevCommand {
+    // Open the panel with daemon diagnostic rendering enabled
+    OpenPanel {
+        #[arg(long, value_enum, default_value = "info")]
+        level: DebugLevelArg,
+    },
+    // Rebuild the daemon desktop application index
+    RefreshApplications,
+    // Explain attribution and popup decisions for one active notification
+    ExplainNotification {
+        id: u32,
+    },
+    // Print diagnostic detail for active notifications
+    DumpActive,
+    // Print diagnostic detail for saved notification history
+    DumpHistory,
+    // Follow daemon journal logs until interrupted
+    Logs,
+}
+
 impl InhibitScopeArg {
     pub(crate) const fn as_scope(self) -> u32 {
         // Map CLI scope to the daemon bitmask value
