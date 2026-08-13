@@ -3828,6 +3828,7 @@ dependencies = [
  "image",
  "proptest",
  "rustix",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

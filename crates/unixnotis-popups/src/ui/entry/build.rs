@@ -8,6 +8,7 @@ use gtk::Align;
 use unixnotis_core::{hooks, NotificationKey, NotificationView};
 use unixnotis_ui::CutCorner;
 
+use super::super::popups::PopupHideTimer;
 use super::super::window::refresh_popup_input_region;
 use super::super::UiState;
 use super::activation::connect_default_action;
@@ -28,10 +29,8 @@ pub(in crate::ui) struct PopupEntry {
     pub(in crate::ui) revealer: Option<gtk::Revealer>,
     pub(in crate::ui) root: Option<gtk::Box>,
     pub(in crate::ui) visibility: Option<PopupVisibilityBinding>,
-    // The display timer hides only this popup row and never closes the daemon record
-    pub(in crate::ui) hide_timer: Option<glib::SourceId>,
-    // GLib has already removed a source when its one-shot callback starts
-    pub(in crate::ui) hide_timer_fired: Option<Rc<Cell<bool>>>,
+    // Timer internals stay centralized in the popup timeout module
+    pub(in crate::ui) hide_timer: PopupHideTimer,
 }
 
 impl PopupEntry {
@@ -46,25 +45,13 @@ impl PopupEntry {
             revealer: None,
             root: None,
             visibility: None,
-            hide_timer: None,
-            hide_timer_fired: None,
+            hide_timer: PopupHideTimer::new(),
         }
     }
 
     pub(in crate::ui) const fn is_materialized(&self) -> bool {
         // Both widgets must exist before stack operations can touch this row safely
         self.revealer.is_some() && self.root.is_some()
-    }
-    pub(in crate::ui) fn cancel_hide_timer(&mut self) {
-        let fired = self
-            .hide_timer_fired
-            .take()
-            .is_some_and(|state| state.get());
-        if let Some(timer) = self.hide_timer.take() {
-            if !fired {
-                timer.remove();
-            }
-        }
     }
 }
 
@@ -84,8 +71,7 @@ impl UiState {
             revealer: Some(revealer),
             root: Some(root),
             visibility: Some(visibility),
-            hide_timer: None,
-            hide_timer_fired: None,
+            hide_timer: PopupHideTimer::new(),
         }
     }
 
@@ -122,6 +108,9 @@ impl UiState {
 
         connect_close_action(&close, notification.key(), &self.command_tx);
         connect_default_action(&root, notification.key(), &view, &self.command_tx);
+        if let Some(sender) = self.popup_event_tx.as_ref() {
+            connect_hover_events(&root, notification.key(), sender);
+        }
         root
     }
 
@@ -178,6 +167,73 @@ impl UiState {
 
         (revealer, visibility)
     }
+}
+
+fn connect_hover_events(
+    root: &gtk::Box,
+    key: NotificationKey,
+    sender: &async_channel::Sender<crate::dbus::UiEvent>,
+) {
+    // One controller on the full card avoids enter/leave churn between child widgets
+    let motion = gtk::EventControllerMotion::new();
+    let latest_hovered = Rc::new(Cell::new(false));
+    let dispatch_pending = Rc::new(Cell::new(false));
+    let entered_latest = Rc::clone(&latest_hovered);
+    let entered_pending = Rc::clone(&dispatch_pending);
+    let entered_sender = sender.clone();
+    motion.connect_enter(move |_, _, _| {
+        queue_hover_event(
+            &entered_sender,
+            key,
+            &entered_latest,
+            &entered_pending,
+            true,
+        );
+    });
+    let left_latest = Rc::clone(&latest_hovered);
+    let left_pending = Rc::clone(&dispatch_pending);
+    let left_sender = sender.clone();
+    motion.connect_leave(move |_| {
+        queue_hover_event(&left_sender, key, &left_latest, &left_pending, false);
+    });
+    root.add_controller(motion);
+}
+
+fn queue_hover_event(
+    sender: &async_channel::Sender<crate::dbus::UiEvent>,
+    key: NotificationKey,
+    latest_hovered: &Rc<Cell<bool>>,
+    dispatch_pending: &Rc<Cell<bool>>,
+    hovered: bool,
+) {
+    // Keep only the newest pointer state while one bounded-channel send is waiting
+    latest_hovered.set(hovered);
+    if dispatch_pending.replace(true) {
+        return;
+    }
+
+    let sender = sender.clone();
+    let latest_hovered = Rc::clone(latest_hovered);
+    let dispatch_pending = Rc::clone(dispatch_pending);
+    glib::MainContext::default().spawn_local(async move {
+        loop {
+            let hovered = latest_hovered.get();
+            if sender
+                .send(crate::dbus::UiEvent::PopupHoverChanged(key, hovered))
+                .await
+                .is_err()
+            {
+                // A closed UI queue cannot accept a final state
+                dispatch_pending.set(false);
+                return;
+            }
+            if latest_hovered.get() == hovered {
+                // No state changed while the bounded send was waiting
+                dispatch_pending.set(false);
+                return;
+            }
+        }
+    });
 }
 
 fn build_card_root(view: &PopupEntryViewModel) -> gtk::Box {

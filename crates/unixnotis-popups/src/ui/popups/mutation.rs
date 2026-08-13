@@ -215,7 +215,7 @@ impl UiState {
     pub(super) fn remove_popup_internal(&mut self, id: u32, refresh_visibility: bool) {
         if let Some(entry) = self.popups.remove(&id) {
             let mut entry = entry;
-            entry.cancel_hide_timer();
+            entry.clear_hide_state();
             if let Some(revealer) = entry.revealer {
                 // Visible rows animate out before leaving the stack
                 revealer.set_reveal_child(false);
@@ -328,6 +328,11 @@ impl UiState {
 
     pub(super) fn dematerialize_popup(&mut self, id: u32) {
         // Hidden rows keep only plain Rust data so backlog size does not scale GTK memory
+        let key = self.popups.get(&id).map(|entry| entry.notification.key());
+        if let Some(key) = key {
+            // Once the card leaves the pointer domain, any active pause must end
+            self.resume_popup_hide(key);
+        }
         let Some(entry) = self.popups.get_mut(&id) else {
             return;
         };

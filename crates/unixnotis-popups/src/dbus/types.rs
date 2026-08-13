@@ -19,6 +19,8 @@ pub enum UiEvent {
     NotificationClosed(NotificationKey, CloseReason),
     // Hiding a banner is local UI state and must not close the daemon record
     PopupHidden(NotificationKey),
+    // Hover state retains generation identity so stale card callbacks are harmless
+    PopupHoverChanged(NotificationKey, bool),
     // Popup gate is split out so panel-only state changes do not wake the popup UI
     PopupGateChanged(PopupGateState),
     CssReload,

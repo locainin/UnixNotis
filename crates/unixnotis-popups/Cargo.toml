@@ -25,3 +25,4 @@ unixnotis-ui = { path = "../unixnotis-ui" }
 
 [dev-dependencies]
 proptest.workspace = true
+tempfile = "3"

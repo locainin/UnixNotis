@@ -17,6 +17,7 @@ pub struct PopupConfig {
     pub max_visible: usize,
     pub default_timeout_ms: u64,
     pub critical_timeout_ms: Option<u64>,
+    pub pause_on_hover: bool,
     pub allow_click_through: bool,
     pub output: Option<String>,
 }
@@ -36,6 +37,7 @@ impl Default for PopupConfig {
             max_visible: 3,
             default_timeout_ms: 5000,
             critical_timeout_ms: None,
+            pause_on_hover: true,
             allow_click_through: false,
             output: None,
         }
