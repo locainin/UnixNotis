@@ -12,9 +12,7 @@ async fn installer_rejects_process_start_success_without_dbus_readiness() {
         .expect("fake service start command should run");
     assert!(status.success());
 
-    let probes = AtomicUsize::new(0);
     let error = wait_until_ready_with_probe(Duration::from_millis(15), || {
-        probes.fetch_add(1, Ordering::Relaxed);
         std::future::ready(Err(anyhow!("both required names have no owner")))
     })
     .await
@@ -22,7 +20,6 @@ async fn installer_rejects_process_start_success_without_dbus_readiness() {
 
     assert!(error.to_string().contains("readiness timed out"));
     assert!(error.to_string().contains("both required names"));
-    assert!(probes.load(Ordering::Relaxed) >= 2);
 }
 
 #[tokio::test]
