@@ -14,7 +14,10 @@ const INSTALLER_LOCK_FILE: &str = "unixnotis-installer.lock";
 #[derive(Debug)]
 pub struct InstallerLock {
     // Retaining the descriptor retains the kernel lock for the complete action
-    #[allow(clippy::used_underscore_binding)]
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "the underscore documents that the descriptor is retained for lock ownership"
+    )]
     _file: File,
 }
 
