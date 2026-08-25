@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use rustix::fs::{flock, open, FlockOperation, Mode, OFlags};
+use rustix::io::retry_on_intr;
 use rustix::process::geteuid;
 
 const INSTALLER_LOCK_FILE: &str = "unixnotis-installer.lock";
@@ -13,6 +14,7 @@ const INSTALLER_LOCK_FILE: &str = "unixnotis-installer.lock";
 #[derive(Debug)]
 pub struct InstallerLock {
     // Retaining the descriptor retains the kernel lock for the complete action
+    #[allow(clippy::used_underscore_binding)]
     _file: File,
 }
 
@@ -56,6 +58,17 @@ impl InstallerLock {
             .map_err(|error| anyhow!(error))
             .context("another UnixNotis installer action is already running")?;
         Ok(Self { _file: file })
+    }
+}
+
+impl Drop for InstallerLock {
+    fn drop(&mut self) {
+        // Explicitly release the lock before closing the descriptor
+        //
+        // flock locks belong to the open-file description, so a descriptor
+        // inherited across fork can otherwise keep the lock alive after this
+        // guard's File is dropped. CLOEXEC only takes effect at exec, not fork
+        let _ = retry_on_intr(|| flock(&self._file, FlockOperation::Unlock));
     }
 }
 

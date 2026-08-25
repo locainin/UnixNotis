@@ -24,8 +24,21 @@ fn second_installer_cannot_acquire_the_same_action_lock() {
             .contains("another UnixNotis installer action is already running"),
         "unexpected contention error: {error:#}"
     );
+
+    // Simulate a descriptor inherited across fork. `dup` refers to the same
+    // open-file description and therefore shares the flock
+    let inherited_descriptor =
+        rustix::io::dup(&first._file).expect("duplicate action-lock descriptor");
+
     drop(first);
-    InstallerLock::acquire_at(&lock_path).expect("released action lock");
+
+    // Dropping the guard must explicitly unlock the open-file description,
+    // even while another descriptor referring to it remains alive
+    let reacquired = InstallerLock::acquire_at(&lock_path).expect("released action lock");
+
+    drop(reacquired);
+    drop(inherited_descriptor);
+
     std::fs::remove_dir_all(root).expect("remove lock fixture");
 }
 
