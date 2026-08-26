@@ -40,3 +40,16 @@ fn reload_events_remain_distinct() {
     assert!(matches!(UiEvent::CssReload, UiEvent::CssReload));
     assert!(matches!(UiEvent::ConfigReload, UiEvent::ConfigReload));
 }
+
+#[test]
+fn popup_hover_events_preserve_notification_generation_and_state() {
+    let key = NotificationKey {
+        id: 17,
+        generation: 23,
+    };
+
+    assert!(matches!(
+        UiEvent::PopupHoverChanged(key, true),
+        UiEvent::PopupHoverChanged(event_key, hovered) if event_key == key && hovered
+    ));
+}

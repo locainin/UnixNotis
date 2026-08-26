@@ -5,55 +5,53 @@ use clap::Parser;
 use unixnotis_core::{ensure_control_api_version, log_session_bus_identity, ControlProxy};
 use zbus::Connection;
 
-use crate::cli::{Args, Command};
+use crate::cli::{Args, Command, ExecutionKind};
 
 use super::local::handle_local_command;
 
 pub fn run() -> Result<()> {
     // Parse CLI arguments before any daemon work starts
     let args = Args::parse();
-    let command = args.command;
+    run_command(args.command)
+}
+
+pub(super) fn run_command(command: Command) -> Result<()> {
     // Semantic checks happen before runtime and D-Bus setup
     command.validate()?;
 
-    if command.is_synchronous() {
-        // Preset and CSS work should not pay for an unused asynchronous runtime
-        handle_local_command(
-            command,
-            crate::css_check::run,
-            crate::preset::run_preset,
-            crate::session_environment::sync,
-            crate::theme::run,
-        )?;
-        return Ok(());
+    match command.execution_kind() {
+        ExecutionKind::LocalSync => handle_local_command(command),
+        ExecutionKind::LocalAsync | ExecutionKind::Daemon => {
+            // A current-thread runtime avoids a worker pool for short control commands
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("build command runtime")?;
+            runtime.block_on(run_async(command))
+        }
     }
-
-    // A current-thread runtime avoids a worker pool for short control commands
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("build command runtime")?;
-    runtime.block_on(run_async(command))
 }
 
-async fn run_async(command: Command) -> Result<()> {
-    if let Command::Doctor {
-        json,
-        verbose,
-        service_manager,
-        config,
-    } = command
-    {
-        // Doctor owns its D-Bus connection so one failed probe cannot stop later checks
-        return crate::doctor::run(json, verbose, service_manager, config).await;
+pub(super) async fn run_async(command: Command) -> Result<()> {
+    match command {
+        Command::Doctor {
+            command: None,
+            json,
+            verbose,
+            service_manager,
+            config,
+        } => {
+            // Doctor owns its D-Bus connection so one failed probe cannot stop later checks
+            crate::doctor::run(json, verbose, service_manager, config).await
+        }
+        Command::Doctor {
+            command: Some(_), ..
+        } => anyhow::bail!("internal routing error: doctor repair reached async dispatcher"),
+        command => run_daemon(command).await,
     }
+}
 
-    // Every remaining command is backed by the running daemon
-    debug_assert!(
-        !command.is_local_only(),
-        "local-only commands must return before D-Bus dispatch"
-    );
-
+async fn run_daemon(command: Command) -> Result<()> {
     // Control commands need the session bus and the daemon proxy
     let connection = Connection::session()
         .await

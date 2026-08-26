@@ -255,7 +255,7 @@ fn runit_backend_hyprland_startup_lines_update_envdir_and_restart() {
     assert_eq!(commands.len(), 1);
     assert_eq!(
         commands[0],
-        "noticenterctl sync-session-environment --service-manager runit"
+        "noticenterctl doctor repair-session --service-manager runit"
     );
     assert!(!commands[0].contains("sh -lc"));
 }

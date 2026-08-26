@@ -124,7 +124,7 @@ fn night_mode_falls_through_when_the_first_installed_backend_cannot_stay_running
         .env("PATH", root.join("bin"))
         .env("TEST_LOG", &log)
         .env("TEST_MARKER", &marker)
-        .env("UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY", "0.05")
+        .env("UNIXNOTIS_BLUE_LIGHT_STARTUP_DELAY", "0.5")
         .status()
         .expect("start first healthy blue-light backend");
 

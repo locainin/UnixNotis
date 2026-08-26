@@ -118,7 +118,7 @@ pub fn stop_for_reinstall_command(artifact_root: &Path) -> CommandSpec {
 }
 
 pub fn hyprland_startup_commands(_artifact_root: &Path, _import_vars: &[&str]) -> Vec<String> {
-    vec!["noticenterctl sync-session-environment --service-manager runit".to_string()]
+    vec!["noticenterctl doctor repair-session --service-manager runit".to_string()]
 }
 
 pub const fn environment_sync_commands() -> Vec<CommandSpec> {

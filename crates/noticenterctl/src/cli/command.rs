@@ -2,23 +2,30 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
-use super::args::{DndState, DoctorServiceManagerArg, PresetCommand, ThemeCommand};
-use super::{DebugLevelArg, InhibitScopeArg};
+use super::args::{
+    DevCommand, DndState, DoctorCommand, DoctorServiceManagerArg, PresetCommand, ThemeCommand,
+};
+use super::InhibitScopeArg;
 use super::{DndClockTime, DndDuration};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionKind {
+    // Runs without Tokio or a daemon connection
+    LocalSync,
+    // Runs on Tokio but owns any D-Bus connections it needs
+    LocalAsync,
+    // Uses the shared daemon control bootstrap and API version check
+    Daemon,
+}
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
     // Toggle the panel visibility without changing other state
     TogglePanel,
-    // Open the panel, optionally enabling debug logging for live diagnostics
-    OpenPanel {
-        #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "info")]
-        debug: Option<DebugLevelArg>,
-    },
+    // Open the panel without enabling diagnostic rendering
+    OpenPanel,
     // Close the panel if it is visible
     ClosePanel,
-    // Rebuild the daemon's desktop application index immediately
-    RefreshApplications,
     // Set or toggle Do Not Disturb mode
     Dnd {
         #[arg(value_enum)]
@@ -30,8 +37,6 @@ pub enum Command {
     },
     // Clear active notifications and saved history
     Clear,
-    // Clear active notifications and saved history
-    ClearAll,
     // Clear active notifications without deleting saved history
     ClearActive,
     // Clear saved history without closing active notifications
@@ -40,20 +45,10 @@ pub enum Command {
     Dismiss {
         id: u32,
     },
-    // Explain application identity and popup suppression for one active notification
-    ExplainNotification {
-        id: u32,
-    },
-    // List active notifications; full output requires diagnostic mode
-    ListActive {
-        #[arg(long)]
-        full: bool,
-    },
-    // List notification history; full output requires diagnostic mode
-    ListHistory {
-        #[arg(long)]
-        full: bool,
-    },
+    // List active notifications using bounded terminal-safe output
+    ListActive,
+    // List notification history using bounded terminal-safe output
+    ListHistory,
     // Create a new inhibitor token
     Inhibit {
         reason: String,
@@ -73,19 +68,16 @@ pub enum Command {
     },
     // Collect independent configuration, theme, bus, service, and log diagnostics
     Doctor {
+        #[command(subcommand)]
+        command: Option<DoctorCommand>,
         #[arg(long)]
         json: bool,
         #[arg(long)]
         verbose: bool,
-        #[arg(long, value_enum, default_value = "auto")]
+        #[arg(long, value_enum, default_value = "auto", global = true)]
         service_manager: DoctorServiceManagerArg,
         #[arg(long, value_name = "PATH")]
         config: Option<PathBuf>,
-    },
-    // Import the compositor session environment and restart the installed user service
-    SyncSessionEnvironment {
-        #[arg(long, value_enum, default_value = "auto")]
-        service_manager: DoctorServiceManagerArg,
     },
     // Export, inspect, or import a shareable preset bundle
     Preset {
@@ -96,6 +88,12 @@ pub enum Command {
     Theme {
         #[command(subcommand)]
         command: ThemeCommand,
+    },
+    // Keep maintenance commands discoverable only through explicit dev help
+    #[command(hide = true)]
+    Dev {
+        #[command(subcommand)]
+        command: DevCommand,
     },
 }
 
@@ -114,29 +112,47 @@ impl Command {
                 ));
             }
         }
+
+        if let Self::Doctor {
+            command: Some(DoctorCommand::RepairSession),
+            json,
+            verbose,
+            service_manager,
+            config,
+        } = self
+        {
+            // Report-only options must never be accepted and then ignored during repair
+            if *json || *verbose || config.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--json, --verbose, and --config are not valid with `doctor repair-session`"
+                ));
+            }
+
+            // Manual mode has no installed service whose environment can be repaired
+            if matches!(service_manager, DoctorServiceManagerArg::Manual) {
+                return Err(anyhow::anyhow!(
+                    "--service-manager manual is not valid with `doctor repair-session`"
+                ));
+            }
+        }
         Ok(())
     }
 
-    pub(crate) const fn is_local_only(&self) -> bool {
-        // Local-only commands should not fail just because D-Bus is unavailable
-        matches!(
-            self,
+    pub(crate) const fn execution_kind(&self) -> ExecutionKind {
+        // One classification prevents contradictory local and synchronous flags
+        match self {
             Self::CssCheck { .. }
-                | Self::Doctor { .. }
-                | Self::Preset { .. }
-                | Self::Theme { .. }
-                | Self::SyncSessionEnvironment { .. }
-        )
-    }
-
-    pub(crate) const fn is_synchronous(&self) -> bool {
-        // Doctor uses local inputs but still needs asynchronous D-Bus and process timeouts
-        matches!(
-            self,
-            Self::CssCheck { .. }
-                | Self::Preset { .. }
-                | Self::Theme { .. }
-                | Self::SyncSessionEnvironment { .. }
-        )
+            | Self::Preset { .. }
+            | Self::Theme { .. }
+            | Self::Doctor {
+                command: Some(DoctorCommand::RepairSession),
+                ..
+            }
+            | Self::Dev {
+                command: DevCommand::Logs,
+            } => ExecutionKind::LocalSync,
+            Self::Doctor { command: None, .. } => ExecutionKind::LocalAsync,
+            _ => ExecutionKind::Daemon,
+        }
     }
 }

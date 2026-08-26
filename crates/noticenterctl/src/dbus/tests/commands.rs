@@ -1,18 +1,17 @@
-use anyhow::anyhow;
+use clap::Parser;
 use unixnotis_core::PanelDebugLevel;
 
 use crate::cli::{
-    Command, DebugLevelArg, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
+    Args, Command, DevCommand, DndState, DoctorServiceManagerArg, InhibitScopeArg, PresetCommand,
 };
 
-use super::super::commands::{handle_command, handle_command_with_debug_logs};
-use super::support::{RecordedCall, RecordedEvent, RecordingControlClient};
+use super::super::commands::{handle_command, handle_dev_command_with_diagnostic_mode};
+use super::support::{RecordedCall, RecordingControlClient};
 
 #[tokio::test]
 async fn clear_commands_dispatch_to_matching_control_calls() {
     let cases = [
         (Command::Clear, RecordedCall::ClearAll),
-        (Command::ClearAll, RecordedCall::ClearAll),
         (Command::ClearActive, RecordedCall::ClearActive),
         (Command::ClearHistory, RecordedCall::ClearHistory),
     ];
@@ -30,12 +29,8 @@ async fn clear_commands_dispatch_to_matching_control_calls() {
 async fn panel_commands_dispatch_to_matching_control_calls() {
     let cases = [
         (Command::TogglePanel, RecordedCall::TogglePanel),
-        (Command::OpenPanel { debug: None }, RecordedCall::OpenPanel),
+        (Command::OpenPanel, RecordedCall::OpenPanel),
         (Command::ClosePanel, RecordedCall::ClosePanel),
-        (
-            Command::RefreshApplications,
-            RecordedCall::RefreshApplications,
-        ),
     ];
 
     for (command, expected) in cases {
@@ -48,55 +43,39 @@ async fn panel_commands_dispatch_to_matching_control_calls() {
 }
 
 #[tokio::test]
-async fn debug_open_dispatches_debug_panel_and_attempts_log_follow() {
-    let client = RecordingControlClient::default();
+async fn dev_commands_dispatch_to_exact_control_calls() {
+    // Build the debug command through Clap so the test covers the public CLI path
+    let parsed = Args::try_parse_from(["noticenterctl", "dev", "open-panel", "--level", "verbose"])
+        .expect("parse developer panel command");
+    let Command::Dev {
+        command: open_panel,
+    } = parsed.command
+    else {
+        panic!("developer panel command should be selected");
+    };
 
-    handle_command_with_debug_logs(
-        &client,
-        Command::OpenPanel {
-            debug: Some(DebugLevelArg::Verbose),
-        },
-        || {
-            client.record_debug_log_follow();
-            Ok(())
-        },
-    )
-    .await
-    .expect("dispatch debug open");
+    let cases = [
+        (
+            open_panel,
+            RecordedCall::OpenPanelDebug(PanelDebugLevel::Verbose),
+        ),
+        (
+            DevCommand::RefreshApplications,
+            RecordedCall::RefreshApplications,
+        ),
+        (
+            DevCommand::ExplainNotification { id: 8 },
+            RecordedCall::NotificationDiagnostics(8),
+        ),
+    ];
 
-    assert_eq!(
-        client.take_events(),
-        vec![
-            RecordedEvent::Control(RecordedCall::OpenPanelDebug(PanelDebugLevel::Verbose)),
-            RecordedEvent::DebugLogFollow,
-        ]
-    );
-}
-
-#[tokio::test]
-async fn debug_open_still_succeeds_when_log_follow_fails() {
-    let client = RecordingControlClient::default();
-
-    handle_command_with_debug_logs(
-        &client,
-        Command::OpenPanel {
-            debug: Some(DebugLevelArg::Warn),
-        },
-        || {
-            client.record_debug_log_follow();
-            Err(anyhow!("journal unavailable"))
-        },
-    )
-    .await
-    .expect("debug open should survive log follow errors");
-
-    assert_eq!(
-        client.take_events(),
-        vec![
-            RecordedEvent::Control(RecordedCall::OpenPanelDebug(PanelDebugLevel::Warn)),
-            RecordedEvent::DebugLogFollow,
-        ]
-    );
+    for (command, expected) in cases {
+        let client = RecordingControlClient::default();
+        handle_command(&client, Command::Dev { command })
+            .await
+            .expect("dispatch developer command");
+        assert_eq!(client.take_calls(), vec![expected]);
+    }
 }
 
 #[tokio::test]
@@ -186,18 +165,8 @@ async fn timed_dnd_dispatch_rejects_non_on_state_without_calling_control() {
 async fn notification_commands_dispatch_to_matching_control_calls() {
     let cases = [
         (Command::Dismiss { id: 7 }, RecordedCall::Dismiss(7)),
-        (
-            Command::ExplainNotification { id: 8 },
-            RecordedCall::NotificationDiagnostics(8),
-        ),
-        (
-            Command::ListActive { full: false },
-            RecordedCall::ListActive,
-        ),
-        (
-            Command::ListHistory { full: false },
-            RecordedCall::ListHistory,
-        ),
+        (Command::ListActive, RecordedCall::ListActive),
+        (Command::ListHistory, RecordedCall::ListHistory),
     ];
 
     for (command, expected) in cases {
@@ -236,10 +205,40 @@ async fn inhibitor_commands_dispatch_to_matching_control_calls() {
 }
 
 #[tokio::test]
-async fn local_commands_do_not_touch_control_client() {
+async fn diagnostic_dumps_require_diagnostic_mode_before_fetching_data() {
+    for command in [DevCommand::DumpActive, DevCommand::DumpHistory] {
+        let client = RecordingControlClient::default();
+        let error = handle_dev_command_with_diagnostic_mode(&client, command, false)
+            .await
+            .expect_err("diagnostic dump should be rejected");
+
+        assert!(error.to_string().contains("UNIXNOTIS_DIAGNOSTIC=1"));
+        assert!(client.take_calls().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn diagnostic_dumps_fetch_matching_data_when_mode_is_enabled() {
+    let cases = [
+        (DevCommand::DumpActive, RecordedCall::ListActive),
+        (DevCommand::DumpHistory, RecordedCall::ListHistory),
+    ];
+
+    for (command, expected) in cases {
+        let client = RecordingControlClient::default();
+        handle_dev_command_with_diagnostic_mode(&client, command, true)
+            .await
+            .expect("diagnostic dump should dispatch");
+        assert_eq!(client.take_calls(), vec![expected]);
+    }
+}
+
+#[tokio::test]
+async fn local_commands_fail_closed_without_touching_control_client() {
     let cases = [
         Command::CssCheck { config: None },
         Command::Doctor {
+            command: None,
             json: false,
             verbose: false,
             service_manager: DoctorServiceManagerArg::Auto,
@@ -254,9 +253,26 @@ async fn local_commands_do_not_touch_control_client() {
 
     for command in cases {
         let client = RecordingControlClient::default();
-        handle_command(&client, command)
+        let error = handle_command(&client, command)
             .await
-            .expect("dispatch command");
+            .expect_err("local command must fail in daemon dispatcher");
+        assert!(error.to_string().contains("internal routing error"));
         assert!(client.take_calls().is_empty());
     }
+}
+
+#[tokio::test]
+async fn dev_logs_fail_closed_without_touching_control_client() {
+    let client = RecordingControlClient::default();
+    let error = handle_command(
+        &client,
+        Command::Dev {
+            command: DevCommand::Logs,
+        },
+    )
+    .await
+    .expect_err("local log follower must fail in daemon dispatcher");
+
+    assert!(error.to_string().contains("internal routing error"));
+    assert!(client.take_calls().is_empty());
 }

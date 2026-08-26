@@ -18,3 +18,12 @@ fn popup_defaults_include_edge_clearance_for_card_shadow() {
     assert_eq!(popup.margin.top, 14);
     assert_eq!(popup.margin.bottom, 14);
 }
+
+#[test]
+fn popup_config_without_hover_setting_enables_pause_for_upgrade_compatibility() {
+    let popup: PopupConfig = toml::from_str("width = 420")
+        .expect("popup config written before hover pause should parse");
+
+    assert!(popup.pause_on_hover);
+    assert_eq!(popup.width, 420);
+}

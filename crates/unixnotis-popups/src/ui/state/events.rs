@@ -53,6 +53,15 @@ impl UiState {
                 );
                 self.hide_popup_if_generation(key);
             }
+            UiEvent::PopupHoverChanged(key, hovered) => {
+                // Timer code validates materialization, config, and exact generation
+                if hovered {
+                    self.pause_popup_hide(key);
+                } else {
+                    // Stale leave state cannot resume a replacement generation
+                    self.resume_popup_hide(key);
+                }
+            }
             UiEvent::PopupGateChanged(gate) => {
                 // Gate updates change only policy fields and preserve unrelated daemon state
                 apply_popup_gate(&mut self.control_state, gate);
@@ -97,6 +106,8 @@ impl UiState {
 
         // Config, generated CSS, and geometry move forward as one accepted snapshot
         self.config = config.clone();
+        // Config can disable pointer handling while a card is still paused
+        self.resume_ineligible_hover_pauses();
         debug!("popup config reloaded");
         self.css.update_theme(theme_paths, config.theme.clone());
         let report = self.css.reload(css::DEFAULT_CSS);

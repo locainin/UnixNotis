@@ -361,15 +361,19 @@ fn popup_display_timeout_hides_only_the_local_banner_generation() {
     assert!(state.popups.contains_key(&first.id));
     assert_materialized_and_visible_commands(&mut command_rx, first.key());
 
-    std::thread::sleep(std::time::Duration::from_millis(15));
-    while gtk::glib::MainContext::default().pending() {
-        gtk::glib::MainContext::default().iteration(false);
-    }
-
-    let hidden = event_rx
-        .try_recv()
+    let hidden = wait_for_ui_event(&event_rx, std::time::Duration::from_millis(500))
         .expect("display timeout should emit a local hide event");
     assert!(matches!(hidden, UiEvent::PopupHidden(key) if key == first.key()));
+    assert!(
+        event_rx.try_recv().is_err(),
+        "one timer must emit exactly one hide event"
+    );
+    // A pointer event racing the fired callback must not remove an expired GLib source
+    state.handle_event(UiEvent::PopupHoverChanged(first.key(), true));
+    assert!(
+        !state.popups[&first.id].hide_timer_is_paused(),
+        "a fired timer cannot be paused or rescheduled"
+    );
     state.handle_event(hidden);
 
     assert!(!state.popups.contains_key(&first.id));
@@ -403,6 +407,160 @@ fn popup_display_timeout_hides_only_the_local_banner_generation() {
             .generation,
         replacement.generation
     );
+}
+
+#[gtk::test]
+fn hover_events_pause_and_resume_only_the_remaining_timeout() {
+    let (mut state, _command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupHoverRemaining", 1);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut popup = notification(32, 1, "hover timeout");
+    popup.popup_hide_after_ms = 5_000;
+    state.add_popup(popup.clone());
+
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), true));
+    assert!(state.popups[&popup.id].hide_timer_is_paused());
+
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), false));
+    assert!(!state.popups[&popup.id].hide_timer_is_paused());
+
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), false));
+    assert!(!state.popups[&popup.id].hide_timer_is_paused());
+    state.remove_popup_if_generation(popup.key());
+}
+
+#[gtk::test]
+fn paused_glib_timer_stays_silent_until_the_saved_remainder_is_resumed() {
+    let (mut state, _command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupHoverSourceLifecycle", 1);
+    let (event_tx, event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut popup = notification(38, 1, "source lifecycle");
+    popup.popup_hide_after_ms = 40;
+    state.add_popup(popup.clone());
+
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), true));
+    assert!(
+        wait_for_ui_event(&event_rx, std::time::Duration::from_millis(80)).is_none(),
+        "cancelled source must not hide a hovered popup"
+    );
+
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), false));
+    let hidden = wait_for_ui_event(&event_rx, std::time::Duration::from_millis(500))
+        .expect("resumed remainder should emit one hide event");
+    assert!(matches!(hidden, UiEvent::PopupHidden(key) if key == popup.key()));
+    assert!(event_rx.try_recv().is_err());
+    state.handle_event(hidden);
+}
+
+#[gtk::test]
+fn replacement_while_paused_gets_fresh_lifetime_and_rejects_stale_leave() {
+    let (mut state, _command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupHoverReplacement", 1);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut original = notification(33, 1, "original");
+    original.popup_hide_after_ms = 5_000;
+    state.add_popup(original.clone());
+    state.handle_event(UiEvent::PopupHoverChanged(original.key(), true));
+    assert!(state.popups[&original.id].hide_timer_is_paused());
+
+    let mut replacement = notification(33, 2, "replacement");
+    replacement.popup_hide_after_ms = 7_000;
+    state.update_popup(replacement.clone(), true);
+    assert!(!state.popups[&replacement.id].hide_timer_is_paused());
+
+    state.handle_event(UiEvent::PopupHoverChanged(original.key(), false));
+    assert!(!state.popups[&replacement.id].hide_timer_is_paused());
+    state.remove_popup_if_generation(replacement.key());
+}
+
+#[gtk::test]
+fn closing_a_paused_popup_removes_its_timer_state_with_the_entry() {
+    let (mut state, _command_rx) = popup_state_with_commands("org.unixnotis.PopupHoverDismiss", 1);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut popup = notification(34, 1, "dismiss paused");
+    popup.popup_hide_after_ms = 5_000;
+    state.add_popup(popup.clone());
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), true));
+    assert!(state.popups[&popup.id].hide_timer_is_paused());
+
+    state.handle_event(UiEvent::NotificationClosed(
+        popup.key(),
+        CloseReason::DismissedByUser,
+    ));
+
+    assert!(!state.popups.contains_key(&popup.id));
+}
+
+#[gtk::test]
+fn disabled_hover_pause_and_click_through_leave_timers_running() {
+    for (application_id, pause_on_hover, allow_click_through) in [
+        ("org.unixnotis.PopupHoverDisabled", false, false),
+        ("org.unixnotis.PopupHoverClickThrough", true, true),
+    ] {
+        let (mut state, _command_rx) = popup_state_with_commands(application_id, 1);
+        state.config.popups.pause_on_hover = pause_on_hover;
+        state.config.popups.allow_click_through = allow_click_through;
+        let (event_tx, _event_rx) = async_channel::bounded(4);
+        state.set_popup_event_sender(event_tx);
+        let mut popup = notification(35, 1, "unpaused policy");
+        popup.popup_hide_after_ms = 5_000;
+        state.add_popup(popup.clone());
+        state.handle_event(UiEvent::PopupHoverChanged(popup.key(), true));
+
+        assert!(!state.popups[&popup.id].hide_timer_is_paused());
+        state.remove_popup_if_generation(popup.key());
+    }
+}
+
+#[gtk::test]
+fn config_policy_change_resumes_a_popup_that_was_already_paused() {
+    let (mut state, _command_rx) =
+        popup_state_with_commands("org.unixnotis.PopupHoverConfigReload", 1);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut popup = notification(39, 1, "config reload");
+    popup.popup_hide_after_ms = 5_000;
+    state.add_popup(popup.clone());
+    state.handle_event(UiEvent::PopupHoverChanged(popup.key(), true));
+    assert!(state.popups[&popup.id].hide_timer_is_paused());
+
+    state.config.popups.allow_click_through = true;
+    state.resume_ineligible_hover_pauses();
+
+    assert!(!state.popups[&popup.id].hide_timer_is_paused());
+    state.remove_popup_if_generation(popup.key());
+}
+
+#[gtk::test]
+fn paused_popup_resumes_before_moving_to_hidden_backlog() {
+    let (mut state, _command_rx) = popup_state_with_commands("org.unixnotis.PopupHoverBacklog", 1);
+    let (event_tx, _event_rx) = async_channel::bounded(4);
+    state.set_popup_event_sender(event_tx);
+    let mut first = notification(36, 1, "first");
+    first.popup_hide_after_ms = 5_000;
+    state.add_popup(first.clone());
+    state.handle_event(UiEvent::PopupHoverChanged(first.key(), true));
+    assert!(state.popups[&first.id].hide_timer_is_paused());
+
+    let mut second = notification(37, 1, "second");
+    second.popup_hide_after_ms = 5_000;
+    state.add_popup(second.clone());
+
+    let backlogged = &state.popups[&first.id];
+    assert!(!backlogged.is_materialized());
+    assert!(!backlogged.hide_timer_is_paused());
+
+    state.handle_event(UiEvent::PopupHoverChanged(first.key(), true));
+    assert!(
+        !state.popups[&first.id].hide_timer_is_paused(),
+        "a backlogged card cannot receive a real pointer hover"
+    );
+    state.remove_popup_if_generation(first.key());
+    state.remove_popup_if_generation(second.key());
 }
 
 #[gtk::test]
@@ -563,6 +721,34 @@ fn descendant_has_text(widget: &gtk::Widget, expected: &str) -> bool {
 
 fn popup_state(application_id: &str) -> UiState {
     popup_state_with_commands(application_id, 0).0
+}
+
+fn wait_for_ui_event(
+    receiver: &async_channel::Receiver<UiEvent>,
+    timeout: std::time::Duration,
+) -> Option<UiEvent> {
+    // Poll GTK work until the expected event arrives or the bounded deadline expires
+    let Some(deadline) = std::time::Instant::now().checked_add(timeout) else {
+        panic!("test timeout should fit in monotonic time");
+    };
+    loop {
+        while gtk::glib::MainContext::default().pending() {
+            gtk::glib::MainContext::default().iteration(false);
+        }
+        match receiver.try_recv() {
+            Ok(event) => return Some(event),
+            Err(async_channel::TryRecvError::Closed) => {
+                panic!("UI event channel closed while waiting")
+            }
+            Err(async_channel::TryRecvError::Empty) => {}
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return None;
+        }
+        // Short parks avoid a busy loop without hiding a slow callback behind a fixed sleep
+        std::thread::park_timeout(remaining.min(std::time::Duration::from_millis(1)));
+    }
 }
 
 fn popup_state_with_commands(
